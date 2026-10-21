@@ -1,0 +1,180 @@
+[
+  {
+    "id": "eval-01",
+    "research_question": "Compare Retrieval-Augmented Generation (RAG) and fine-tuning for domain-specific question answering in terms of accuracy, latency, and hallucination reduction.",
+    "paper": {
+      "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks",
+      "authors": "Patrick Lewis, Ethan Perez, Aleksandara Piktus, et al.",
+      "publication_year": 2020,
+      "venue": "Advances in Neural Information Processing Systems (NeurIPS 2020)",
+      "provider": "openalex",
+      "doc_type": "proceedings-article",
+      "abstract": "We explore general-purpose fine-tuning recipes for retrieval-augmented generation (RAG) — models which combine pre-trained parametric and non-parametric memory for language generation. We evaluate RAG models on a wide range of knowledge-intensive NLP benchmarks, showing state-of-the-art results on open-domain QA and reduced hallucination compared to purely parametric models.",
+      "passages": [
+        "RAG models combine pre-trained parametric memory with non-parametric retrieval. In open-domain question answering, retrieval augmentation reduced hallucination rates and outperformed standard sequence-to-sequence fine-tuning on Natural Questions."
+      ]
+    },
+    "human_relevance_label": "INCLUDE",
+    "expected_peer_review_status": "PEER_REVIEWED_CONFERENCE",
+    "claim_verification_cases": [
+      {
+        "case_id": "c1-pos",
+        "claim_text": "Retrieval augmentation reduced hallucination rates and outperformed standard sequence-to-sequence fine-tuning on Natural Questions.",
+        "evidence_passage": "In open-domain question answering, retrieval augmentation reduced hallucination rates and outperformed standard sequence-to-sequence fine-tuning on Natural Questions.",
+        "human_support_label": "SUPPORTED"
+      },
+      {
+        "case_id": "c1-contra",
+        "claim_text": "RAG models suffered higher hallucination rates than purely parametric models on open-domain question answering benchmarks.",
+        "evidence_passage": "In open-domain question answering, retrieval augmentation reduced hallucination rates and outperformed standard sequence-to-sequence fine-tuning on Natural Questions.",
+        "human_support_label": "CONTRADICTED"
+      }
+    ]
+  },
+  {
+    "id": "eval-02",
+    "research_question": "Compare Retrieval-Augmented Generation (RAG) and fine-tuning for domain-specific question answering in terms of accuracy, latency, and hallucination reduction.",
+    "paper": {
+      "title": "A Systematic Review of Calcium Signaling Pathways in Cardiac Myocytes",
+      "authors": "Elena Gomez, Robert H. Miller",
+      "publication_year": 2018,
+      "venue": "Journal of Molecular Cardiology",
+      "provider": "openalex",
+      "doc_type": "journal-article",
+      "abstract": "Calcium homeostasis is essential for electromechanical coupling in cardiac myocytes. This review examines ryanodine receptor activation and sarcoplasmic reticulum calcium ATPase regulation under physiological and pathological conditions.",
+      "passages": [
+        "Ryanodine receptors mediate rapid calcium release from the sarcoplasmic reticulum during systole."
+      ]
+    },
+    "human_relevance_label": "EXCLUDE",
+    "expected_peer_review_status": "PEER_REVIEWED_JOURNAL",
+    "claim_verification_cases": [
+      {
+        "case_id": "c2-unrelated",
+        "claim_text": "Fine-tuning reduces latency by 40% compared to dense vector index retrieval.",
+        "evidence_passage": "Ryanodine receptors mediate rapid calcium release from the sarcoplasmic reticulum during systole.",
+        "human_support_label": "INSUFFICIENT_EVIDENCE"
+      }
+    ]
+  },
+  {
+    "id": "eval-03",
+    "research_question": "Analyze parameter-efficient fine-tuning (PEFT) methods including LoRA and QLoRA for large language models.",
+    "paper": {
+      "title": "QLoRA: Efficient Finetuning of Quantized LLMs",
+      "authors": "Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, Luke Zettlemoyer",
+      "publication_year": 2023,
+      "venue": "arXiv",
+      "provider": "arxiv",
+      "doc_type": "preprint",
+      "raw_metadata": {
+        "arxiv_url": "https://arxiv.org/abs/2305.14314"
+      },
+      "abstract": "We present QLoRA, an efficient finetuning approach that reduces memory usage enough to finetune a 65B parameter model on a single 48GB GPU while preserving full 16-bit finetuning task performance. QLoRA backpropagates gradients through a frozen, 4-bit quantized pretrained language model into Low Rank Adapters (LoRA).",
+      "passages": [
+        "QLoRA introduces 4-bit NormalFloat quantization, double quantization, and paged optimizers, reducing the memory footprint of 65B model fine-tuning from >780GB to <48GB of VRAM."
+      ]
+    },
+    "human_relevance_label": "INCLUDE",
+    "expected_peer_review_status": "PREPRINT",
+    "claim_verification_cases": [
+      {
+        "case_id": "c3-pos",
+        "claim_text": "QLoRA enables fine-tuning of 65 billion parameter models on a single 48GB GPU by quantizing weights to 4-bit NormalFloat precision.",
+        "evidence_passage": "QLoRA introduces 4-bit NormalFloat quantization, double quantization, and paged optimizers, reducing the memory footprint of 65B model fine-tuning from >780GB to <48GB of VRAM.",
+        "human_support_label": "SUPPORTED"
+      },
+      {
+        "case_id": "c3-partial",
+        "claim_text": "QLoRA eliminates all memory bottlenecks and speeds up model training by 10x over full fine-tuning across all hardware architectures.",
+        "evidence_passage": "QLoRA reduces memory usage enough to finetune a 65B parameter model on a single 48GB GPU while preserving full 16-bit finetuning task performance.",
+        "human_support_label": "PARTIALLY_SUPPORTED"
+      }
+    ]
+  },
+  {
+    "id": "eval-04",
+    "research_question": "Analyze parameter-efficient fine-tuning (PEFT) methods including LoRA and QLoRA for large language models.",
+    "paper": {
+      "title": "LoRA: Low-Rank Adaptation of Large Language Models",
+      "authors": "Edward Hu, Yelong Shen, Phillip Wallis, et al.",
+      "publication_year": 2022,
+      "venue": "International Conference on Learning Representations (ICLR 2022)",
+      "provider": "arxiv",
+      "doc_type": "preprint",
+      "raw_metadata": {
+        "arxiv_url": "https://arxiv.org/abs/2106.09685",
+        "journal_ref": "ICLR 2022"
+      },
+      "abstract": "Low-Rank Adaptation, or LoRA, freezes pre-trained model weights and injects trainable rank decomposition matrices into each layer of the Transformer architecture, greatly reducing the number of trainable parameters for downstream tasks.",
+      "passages": [
+        "LoRA reduces the number of trainable parameters by 10,000 times and GPU memory requirements by 3 times compared to GPT-3 175B full fine-tuning."
+      ]
+    },
+    "human_relevance_label": "INCLUDE",
+    "expected_peer_review_status": "PEER_REVIEWED_CONFERENCE",
+    "claim_verification_cases": [
+      {
+        "case_id": "c4-pos",
+        "claim_text": "LoRA freezes pre-trained Transformer weights and trains low-rank decomposition matrices, reducing trainable parameters up to 10,000 times on GPT-3 175B.",
+        "evidence_passage": "LoRA reduces the number of trainable parameters by 10,000 times and GPU memory requirements by 3 times compared to GPT-3 175B full fine-tuning.",
+        "human_support_label": "SUPPORTED"
+      }
+    ]
+  },
+  {
+    "id": "eval-05",
+    "research_question": "Examine the macroeconomic impact of generative AI automation on high-skill labor markets, wages, and productivity dispersion.",
+    "paper": {
+      "title": "Generative AI at Work: Productivity Effects in Customer Support",
+      "authors": "Erik Brynjolfsson, Danielle Li, Lindsey R. Raymond",
+      "publication_year": 2023,
+      "venue": "NBER Working Paper Series",
+      "provider": "openalex",
+      "doc_type": "report",
+      "raw_metadata": {
+        "type": "report",
+        "venue": "National Bureau of Economic Research"
+      },
+      "abstract": "We study the phased implementation of a generative AI-based conversational assistant across 5,179 customer support agents. AI assistance increases worker productivity by 14% on average, with the largest gains observed among novice and low-skill workers.",
+      "passages": [
+        "Access to the generative AI tool increases resolution rates by 14% and reduces resolution times, with substantial acceleration for workers in the bottom skill quartile."
+      ]
+    },
+    "human_relevance_label": "INCLUDE",
+    "expected_peer_review_status": "TECHNICAL_REPORT",
+    "claim_verification_cases": [
+      {
+        "case_id": "c5-pos",
+        "claim_text": "Generative AI assistance increased customer support agent productivity by 14% on average, delivering the greatest benefits to low-skill workers.",
+        "evidence_passage": "Access to the generative AI tool increases resolution rates by 14% and reduces resolution times, with substantial acceleration for workers in the bottom skill quartile.",
+        "human_support_label": "SUPPORTED"
+      }
+    ]
+  },
+  {
+    "id": "eval-06",
+    "research_question": "Investigate degradation mechanisms in lithium-ion battery solid-state electrolytes.",
+    "paper": {
+      "title": "Preliminary Notes on Battery Materials from Industrial Working Group",
+      "authors": "Anonymous Contributor",
+      "publication_year": 2024,
+      "venue": null,
+      "provider": "generic",
+      "doc_type": null,
+      "raw_metadata": {},
+      "abstract": null,
+      "passages": []
+    },
+    "human_relevance_label": "REVIEW",
+    "expected_peer_review_status": "UNKNOWN",
+    "claim_verification_cases": [
+      {
+        "case_id": "c6-missing-evidence",
+        "claim_text": "Lithium dendrite penetration occurs primarily along grain boundaries in sulfide electrolytes at current densities above 2 mA/cm².",
+        "evidence_passage": "",
+        "human_support_label": "INSUFFICIENT_EVIDENCE"
+      }
+    ]
+  }
+]

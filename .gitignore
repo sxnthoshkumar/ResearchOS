@@ -11,9 +11,9 @@ __pycache__/
 .pytest_cache/
 
 # SQLite Database & Runtime data
-data/*.db
-data/*.sqlite
-data/*.sqlite3
+# data/*.db
+# data/*.sqlite
+# data/*.sqlite3
 !data/.gitkeep
 
 # Environment variables & secrets
@@ -21,8 +21,8 @@ data/*.sqlite3
 .env.local
 
 # Generated reports & exports
-exports/
-*.pdf
+# exports/
+# *.pdf
 
 # IDE and OS files
 .vscode/

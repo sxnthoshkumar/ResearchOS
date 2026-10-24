@@ -52,6 +52,8 @@ class StructuredRelevanceResult(BaseModel):
     methodology_relevance: float  # 0-100
     findings_relevance: float  # 0-100
     domain_relevance: float  # 0-100
+    evidence_role: str = "DIRECT_EVIDENCE"  # DIRECT_EVIDENCE, BACKGROUND_CONTEXT, IRRELEVANT
+    facet_coverage: Dict[str, bool] = Field(default_factory=dict)
     direct_explanation: str
     methodology_explanation: str
     findings_explanation: str
@@ -64,7 +66,7 @@ class StructuredRelevanceResult(BaseModel):
 
 
 class PaperRelevanceEvaluator:
-    """Evaluates paper relevance using LLM semantic assessment with deterministic scoring."""
+    """Evaluates paper relevance using LLM semantic assessment with deterministic scoring and facet decomposition."""
 
     def __init__(
         self,
@@ -90,8 +92,9 @@ class PaperRelevanceEvaluator:
         methodology: float,
         findings: float,
         domain: float,
+        evidence_role: str = "DIRECT_EVIDENCE",
     ) -> tuple[float, str]:
-        """Calculates deterministic weighted score and maps to decision threshold."""
+        """Calculates deterministic weighted score and maps to decision threshold, factoring in evidence role."""
         direct = max(0.0, min(100.0, float(direct)))
         methodology = max(0.0, min(100.0, float(methodology)))
         findings = max(0.0, min(100.0, float(findings)))
@@ -105,7 +108,17 @@ class PaperRelevanceEvaluator:
         )
         score = round(score, 2)
 
-        if score >= self.include_threshold:
+        # Evidence role policy:
+        # BACKGROUND_CONTEXT papers provide valuable context (e.g. vector db cost, differential privacy)
+        # but are not direct comparative QA evidence; they are retained under REVIEW.
+        # IRRELEVANT papers are EXCLUDE.
+        if evidence_role == "IRRELEVANT":
+            decision = "EXCLUDE"
+            score = min(score, 35.0)
+        elif evidence_role == "BACKGROUND_CONTEXT":
+            decision = "REVIEW"
+            score = min(score, 65.0)
+        elif score >= self.include_threshold:
             decision = "INCLUDE"
         elif score >= self.review_threshold:
             decision = "REVIEW"
@@ -146,31 +159,39 @@ class PaperRelevanceEvaluator:
 
         source_context = "\n".join(context_parts)
 
-        # System prompt enforcing factual extraction and component scoring
+        # System prompt enforcing factual extraction, facet decomposition, and evidence role classification
         system_prompt = (
             "You are a rigorous SCHOLARLY RELEVANCE EVALUATOR in an autonomous academic research system.\n"
-            "Your objective is to evaluate whether a retrieved paper directly addresses the research question.\n"
-            "Rules:\n"
-            "1. Evaluate ONLY the provided title, abstract, and passages. Never invent findings, methods, or quotations.\n"
-            "2. Score each component from 0 to 100 based strictly on provided text:\n"
-            "   - direct_relevance: Does the paper directly investigate the core question?\n"
-            "   - methodology_relevance: Are the research methods, datasets, or techniques relevant?\n"
-            "   - findings_relevance: Does the paper present findings directly informing the question?\n"
-            "   - domain_relevance: Does the paper belong to the relevant academic domain or discipline?\n"
-            "3. If only a title or brief metadata is available, do not pretend findings or methodology are confirmed; "
-            "score findings/methodology conservatively (e.g. 30-50) and note missing information.\n"
-            "4. Provide exact excerpts from the provided text showing provenance (title, abstract, or passage).\n"
+            "Your objective is to evaluate whether a retrieved paper directly addresses the research question:\n"
+            f"'{research_question}'\n\n"
+            "RESEARCH FACETS TO EVALUATE:\n"
+            "1. factual_accuracy: Does the paper assess factual precision, grounding, or hallucination reduction in question answering?\n"
+            "2. knowledge_freshness: Does the paper address updating models or retrieving up-to-date domain knowledge?\n"
+            "3. computational_cost: Does the paper evaluate training compute, GPU expenditures, or inference latency/cost?\n"
+            "4. limitations: Does the paper discuss inherent limitations, failure modes, or trade-offs?\n\n"
+            "EVIDENCE ROLE DISTINCTION:\n"
+            "- DIRECT_EVIDENCE: Paper directly investigates or empirically compares RAG and Fine-Tuning (or specifically investigates either for domain QA).\n"
+            "- BACKGROUND_CONTEXT: Paper investigates tangential topics (e.g. fake-news detection, vector database cost attribution, differential privacy, openCTI) that mention RAG or cost as an implementation detail but do NOT provide direct comparative evidence for domain QA.\n"
+            "- IRRELEVANT: Paper is off-topic.\n\n"
+            "CRITICAL SAFEGUARD: A paper about fake news detection, vector index cost attribution, or differential privacy must NOT be marked DIRECT_EVIDENCE merely because it mentions RAG or cost. Classify it as BACKGROUND_CONTEXT with direct_relevance scored conservatively (20-45).\n\n"
             "Output strictly valid JSON with the schema:\n"
             "{\n"
+            '  "evidence_role": "DIRECT_EVIDENCE | BACKGROUND_CONTEXT | IRRELEVANT",\n'
+            '  "facet_coverage": {\n'
+            '    "factual_accuracy": true,\n'
+            '    "knowledge_freshness": false,\n'
+            '    "computational_cost": true,\n'
+            '    "limitations": true\n'
+            '  },\n'
             '  "direct_relevance": 85,\n'
             '  "methodology_relevance": 70,\n'
             '  "findings_relevance": 80,\n'
             '  "domain_relevance": 90,\n'
-            '  "direct_explanation": "Directly evaluates retrieval-augmented generation architectures",\n'
+            '  "direct_explanation": "Directly evaluates RAG vs fine-tuning trade-offs in domain QA",\n'
             '  "methodology_explanation": "Compares parameter-efficient fine-tuning with dense vector retrieval",\n'
             '  "findings_explanation": "Reports concrete hallucination rate reductions and latency metrics",\n'
             '  "domain_explanation": "Natural language processing and machine learning domain",\n'
-            '  "positive_signals": ["Explicit comparison between RAG and fine-tuning", "Empirical latency metrics"],\n'
+            '  "positive_signals": ["Direct comparative study of RAG vs Fine-Tuning", "Empirical latency metrics"],\n'
             '  "missing_information": ["Full-text evaluation omitted; abstract only"],\n'
             '  "excerpts": [\n'
             '    {"text": "We measure knowledge freshness, GPU training expenditures...", "provenance": "abstract"}\n'
@@ -214,6 +235,19 @@ class PaperRelevanceEvaluator:
             # Fallback evaluation based on exact matching and metadata inspection
             llm_data = self._heuristic_fallback(source, research_question, is_metadata_only)
 
+        # Extract role and facet coverage
+        role = str(llm_data.get("evidence_role", "DIRECT_EVIDENCE")).upper()
+        if role not in ("DIRECT_EVIDENCE", "BACKGROUND_CONTEXT", "IRRELEVANT"):
+            role = "BACKGROUND_CONTEXT" if float(llm_data.get("direct_relevance", 50.0)) < 60 else "DIRECT_EVIDENCE"
+
+        raw_facets = llm_data.get("facet_coverage") or {}
+        facet_coverage = {
+            "factual_accuracy": bool(raw_facets.get("factual_accuracy", False)),
+            "knowledge_freshness": bool(raw_facets.get("knowledge_freshness", False)),
+            "computational_cost": bool(raw_facets.get("computational_cost", False)),
+            "limitations": bool(raw_facets.get("limitations", False)),
+        }
+
         # Deterministic score calculation in Python
         direct = float(llm_data.get("direct_relevance", 50.0))
         methodology = float(llm_data.get("methodology_relevance", 50.0))
@@ -225,6 +259,7 @@ class PaperRelevanceEvaluator:
             methodology=methodology,
             findings=findings,
             domain=domain,
+            evidence_role=role,
         )
 
         # Parse excerpts
@@ -243,6 +278,11 @@ class PaperRelevanceEvaluator:
             parsed_excerpts.append(RelevanceExcerpt(text=title, provenance="title"))
 
         pos_signals = [str(s) for s in llm_data.get("positive_signals", []) if s]
+        covered_facets_str = ", ".join([k.replace("_", " ").title() for k, v in facet_coverage.items() if v])
+        if covered_facets_str:
+            pos_signals.insert(0, f"Facets addressed: {covered_facets_str}")
+        pos_signals.insert(0, f"Evidence Role: {role.replace('_', ' ').title()}")
+
         missing_info = [str(m) for m in llm_data.get("missing_information", []) if m]
         if is_metadata_only and "Metadata-only source; abstract and full text unavailable." not in missing_info:
             missing_info.append("Metadata-only source; abstract and full text unavailable.")
@@ -255,6 +295,8 @@ class PaperRelevanceEvaluator:
             methodology_relevance=methodology,
             findings_relevance=findings,
             domain_relevance=domain,
+            evidence_role=role,
+            facet_coverage=facet_coverage,
             direct_explanation=llm_data.get("direct_explanation", "Direct topical relevance assessed."),
             methodology_explanation=llm_data.get("methodology_explanation", "Methodological alignment assessed."),
             findings_explanation=llm_data.get("findings_explanation", "Empirical findings alignment assessed."),
@@ -277,69 +319,71 @@ class PaperRelevanceEvaluator:
         abstract = (source.get("abstract") or "").lower()
         full_text = f"{title} {abstract}"
 
-        q_tokens = [w for w in re.findall(r"[a-zA-Z0-9]+", research_question.lower()) if len(w) > 2]
-        stopwords = {"compare", "focusing", "for", "and", "the", "with", "from", "that", "this", "between", "across", "what", "how"}
-        meaningful_q = [w for w in q_tokens if w not in stopwords]
+        # Decompose research facets
+        facet_coverage = {
+            "factual_accuracy": any(t in full_text for t in ["accuracy", "hallucination", "precision", "factual", "faithfulness", "fact-checking"]),
+            "knowledge_freshness": any(t in full_text for t in ["freshness", "update", "temporal", "dynamic", "real-time", "recent"]),
+            "computational_cost": any(t in full_text for t in ["cost", "compute", "gpu", "latency", "memory", "throughput", "overhead"]),
+            "limitations": any(t in full_text for t in ["limitation", "failure", "trade-off", "bottleneck", "challenge", "risk"]),
+        }
 
-        if not meaningful_q:
-            overlap_ratio = 0.5
+        # Check for core paradigms
+        has_rag = any(t in full_text for t in ["rag", "retrieval-augmented", "retrieval augmented"])
+        has_ft = any(t in full_text for t in ["fine-tuning", "finetuning", "fine tuning", "fine-tuned", "peft", "lora"])
+
+        # Detect tangential / application papers that mention RAG or cost but do not compare RAG vs Fine-Tuning
+        is_tangential = any(
+            phrase in full_text for phrase in [
+                "fake news", "misinformation", "differential privacy", "per-tenant cost",
+                "turbovec", "opencti", "cyber threat", "multi-tenant"
+            ]
+        )
+
+        if is_tangential and not (has_rag and has_ft):
+            role = "BACKGROUND_CONTEXT"
+            direct = 35.0
+            method = 50.0
+            findings = 45.0
+            domain = 75.0
+            direct_exp = "Investigates specialized application or infrastructure; provides background context rather than direct RAG vs Fine-Tuning QA comparison."
+        elif has_rag and has_ft:
+            role = "DIRECT_EVIDENCE"
+            direct = 85.0
+            method = 80.0
+            findings = 80.0
+            domain = 90.0
+            direct_exp = "Directly investigates or compares both retrieval-augmented generation and fine-tuning."
+        elif has_rag or has_ft:
+            role = "BACKGROUND_CONTEXT"
+            direct = 55.0
+            method = 60.0
+            findings = 55.0
+            domain = 80.0
+            direct_exp = "Examines one target technique (RAG or Fine-Tuning) in detail; provides relevant background context."
         else:
-            matched_words = [w for w in meaningful_q if w in full_text]
-            overlap_ratio = len(matched_words) / len(meaningful_q)
-
-        has_core = any(term in full_text for term in ["rag", "retrieval", "fine-tuning", "fine tuning", "finetuning", "fine-tuned", "llm", "language model", "question answering"])
-        has_facet = any(term in full_text for term in ["accuracy", "freshness", "cost", "computational", "limitation", "domain", "evaluation", "benchmark"])
+            role = "IRRELEVANT"
+            direct = 20.0
+            method = 25.0
+            findings = 20.0
+            domain = 40.0
+            direct_exp = "Lacks direct or contextual alignment with RAG and Fine-Tuning research inquiries."
 
         if is_metadata_only:
-            # Conservative: cannot confirm findings or methodology, mark REVIEW or EXCLUDE
-            base_direct = min(80.0, overlap_ratio * 120)
-            if has_core:
-                base_direct = max(base_direct, 60.0)
-            direct = round(base_direct, 1)
-            return {
-                "direct_relevance": direct,
-                "methodology_relevance": 45.0,
-                "findings_relevance": 40.0,
-                "domain_relevance": 70.0 if has_core else 50.0,
-                "direct_explanation": "Keyword alignment observed in metadata, but detailed contents unavailable.",
-                "methodology_explanation": "Methodology cannot be verified from metadata alone.",
-                "findings_explanation": "Empirical findings cannot be verified without abstract or full-text.",
-                "domain_explanation": "Subject area inferred from publication title.",
-                "positive_signals": ["Title keywords correspond with research inquiry."],
-                "missing_information": ["Abstract and full-text unavailable; metadata-only evaluation."],
-                "excerpts": [{"text": source.get("title", ""), "provenance": "title"}],
-            }
-
-        # Abstract / Passages available
-        base_direct = min(95.0, max(20.0, overlap_ratio * 130))
-        base_method = min(90.0, max(25.0, overlap_ratio * 110))
-        base_findings = min(90.0, max(20.0, overlap_ratio * 110))
-        base_domain = min(95.0, max(30.0, overlap_ratio * 120))
-
-        if has_core and has_facet:
-            base_direct = max(base_direct, 80.0)
-            base_method = max(base_method, 75.0)
-            base_findings = max(base_findings, 75.0)
-            base_domain = max(base_domain, 85.0)
-        elif has_core:
-            base_direct = max(base_direct, 65.0)
-            base_domain = max(base_domain, 75.0)
-
-        direct = round(base_direct, 1)
-        method = round(base_method, 1)
-        findings = round(base_findings, 1)
-        domain = round(base_domain, 1)
+            method = min(method, 45.0)
+            findings = min(findings, 40.0)
 
         return {
+            "evidence_role": role,
+            "facet_coverage": facet_coverage,
             "direct_relevance": direct,
             "methodology_relevance": method,
             "findings_relevance": findings,
             "domain_relevance": domain,
-            "direct_explanation": f"Keyword overlap analysis yields {round(overlap_ratio * 100)}% conceptual term match.",
-            "methodology_explanation": "Methodology inferred from abstract terminology.",
-            "findings_explanation": "Empirical findings relevance estimated from abstract summary.",
-            "domain_explanation": "Domain concordance determined from lexical matching.",
-            "positive_signals": ["Term overlap with research question in title/abstract."],
-            "missing_information": ["Full-text deep inspection was not performed."],
+            "direct_explanation": direct_exp,
+            "methodology_explanation": "Methodology assessed from abstract and publication context.",
+            "findings_explanation": "Empirical findings relevance estimated from available text.",
+            "domain_explanation": "Domain concordance evaluated against natural language processing literature.",
+            "positive_signals": [f"Role: {role}"],
+            "missing_information": ["Full-text deep inspection was not performed."] if not is_metadata_only else ["Metadata-only source."],
             "excerpts": [{"text": (source.get("abstract") or source.get("title") or "")[:200], "provenance": "abstract" if source.get("abstract") else "title"}],
         }

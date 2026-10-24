@@ -67,14 +67,18 @@ class ResearchOrchestrator:
             raise ValueError(f"Run {run_id} does not exist.")
 
         question = run["question"]
+        domain = run.get("domain") or "Computer Science & AI"
         raw_mode = (run.get("provider_mode") or settings.LLM_PROVIDER).lower()
         is_demo_run = (raw_mode == "demo")
         is_demo_sources = is_demo_run
         force_demo_llm = is_demo_run
 
         search_providers = run["search_providers"].split(",") if run.get("search_providers") else ["openalex", "arxiv"]
-        max_sources = run.get("max_sources", 10)
+        max_sources = run.get("max_sources", 8)
         max_retries = run.get("max_retries", 2)
+        publication_preference = run.get("publication_preference") or "all"
+        evidence_preference = run.get("evidence_preference") or "full_text_preferred"
+        relevance_threshold = float(run.get("relevance_threshold") if run.get("relevance_threshold") is not None else 50.0)
 
         # Resolve provider: 'demo', 'ollama', or 'openai'
         provider_name = "demo" if force_demo_llm else ("ollama" if raw_mode in ("ollama", "live") else raw_mode)
@@ -97,12 +101,12 @@ class ResearchOrchestrator:
             await broadcaster.broadcast(
                 run_id,
                 "STATE_CHANGED",
-                {"state": current_state.value, "agent": "planner", "message": "Planner Agent decomposing research question..."},
+                {"state": current_state.value, "agent": "planner", "message": f"Planner Agent formulating strategy for {domain}..."},
             )
 
-            task_plan = TaskRepository.create(run_id, "planner", "Decompose Question & Create Research Plan", {"question": question})
+            task_plan = TaskRepository.create(run_id, "planner", "Decompose Question & Create Research Plan", {"question": question, "domain": domain})
             try:
-                plan = await planner.create_plan(question)
+                plan = await planner.create_plan(question, domain=domain)
                 TaskRepository.finish(task_plan["id"], "COMPLETED", plan.model_dump())
             except Exception as e:
                 TaskRepository.finish(task_plan["id"], "FAILED", error_message=str(e))
@@ -132,6 +136,9 @@ class ResearchOrchestrator:
                     search_providers=search_providers,
                     max_sources=max_sources,
                     is_demo=is_demo_sources,
+                    publication_preference=publication_preference,
+                    evidence_preference=evidence_preference,
+                    relevance_threshold=relevance_threshold,
                 )
                 TaskRepository.finish(task_res["id"], "COMPLETED", harvest_res.model_dump())
             except Exception as e:

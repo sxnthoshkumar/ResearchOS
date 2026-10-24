@@ -28,8 +28,8 @@ class ProjectRepository:
         with db_manager.get_connection() as conn:
             conn.execute(
                 """
-                INSERT INTO research_projects (id, title, description, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?);
+                INSERT INTO research_projects (id, title, description, status, created_at, updated_at)
+                VALUES (?, ?, ?, 'ACTIVE', ?, ?);
                 """,
                 (project_id, title.strip(), description.strip() if description else "", now, now),
             )
@@ -37,6 +37,7 @@ class ProjectRepository:
             "id": project_id,
             "title": title.strip(),
             "description": description or "",
+            "status": "ACTIVE",
             "created_at": now,
             "updated_at": now,
         }
@@ -45,13 +46,107 @@ class ProjectRepository:
     def get(project_id: str) -> Optional[Dict[str, Any]]:
         with db_manager.get_connection() as conn:
             row = conn.execute("SELECT * FROM research_projects WHERE id = ?;", (project_id,)).fetchone()
-            return dict(row) if row else None
+            if not row:
+                return None
+            p = dict(row)
+            if not p.get("status"):
+                p["status"] = "ACTIVE"
+            return p
 
     @staticmethod
-    def list_all() -> List[Dict[str, Any]]:
+    def list_all(include_archived: bool = True) -> List[Dict[str, Any]]:
         with db_manager.get_connection() as conn:
-            rows = conn.execute("SELECT * FROM research_projects ORDER BY created_at DESC;").fetchall()
-            return [dict(r) for r in rows]
+            query = """
+                SELECT p.*,
+                       COUNT(r.id) AS runs_count,
+                       SUM(CASE WHEN r.status = 'COMPLETED' THEN 1 ELSE 0 END) AS completed_runs_count,
+                       (SELECT status FROM research_runs WHERE project_id = p.id ORDER BY created_at DESC LIMIT 1) AS latest_run_status,
+                       (SELECT question FROM research_runs WHERE project_id = p.id ORDER BY created_at DESC LIMIT 1) AS latest_run_question,
+                       (SELECT created_at FROM research_runs WHERE project_id = p.id ORDER BY created_at DESC LIMIT 1) AS latest_run_time,
+                       (SELECT COUNT(*) FROM research_syntheses WHERE project_id = p.id) AS syntheses_count
+                FROM research_projects p
+                LEFT JOIN research_runs r ON p.id = r.project_id
+            """
+            if not include_archived:
+                query += " WHERE p.status != 'ARCHIVED'"
+            query += " GROUP BY p.id ORDER BY COALESCE(latest_run_time, p.updated_at) DESC;"
+
+            rows = conn.execute(query).fetchall()
+            results = []
+            for r in rows:
+                item = dict(r)
+                if not item.get("status"):
+                    item["status"] = "ACTIVE"
+                item["runs_count"] = item.get("runs_count") or 0
+                item["completed_runs_count"] = item.get("completed_runs_count") or 0
+                item["syntheses_count"] = item.get("syntheses_count") or 0
+                results.append(item)
+            return results
+
+    @staticmethod
+    def update(
+        project_id: str,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        now = utc_now_iso()
+        updates = ["updated_at = ?"]
+        params: List[Any] = [now]
+        if title is not None:
+            updates.append("title = ?")
+            params.append(title.strip())
+        if description is not None:
+            updates.append("description = ?")
+            params.append(description.strip())
+        if status is not None:
+            updates.append("status = ?")
+            params.append(status.strip().upper())
+        params.append(project_id)
+
+        with db_manager.get_connection() as conn:
+            conn.execute(
+                f"UPDATE research_projects SET {', '.join(updates)} WHERE id = ?;",
+                params,
+            )
+        return ProjectRepository.get(project_id)
+
+    @staticmethod
+    def archive(project_id: str) -> Optional[Dict[str, Any]]:
+        return ProjectRepository.update(project_id, status="ARCHIVED")
+
+    @staticmethod
+    def restore(project_id: str) -> Optional[Dict[str, Any]]:
+        return ProjectRepository.update(project_id, status="ACTIVE")
+
+    @staticmethod
+    def get_stats(project_id: str) -> Dict[str, Any]:
+        with db_manager.get_connection() as conn:
+            runs = conn.execute(
+                "SELECT COUNT(*), SUM(CASE WHEN status='COMPLETED' THEN 1 ELSE 0 END) FROM research_runs WHERE project_id = ?;",
+                (project_id,),
+            ).fetchone()
+            sources_count = conn.execute(
+                "SELECT COUNT(DISTINCT s.id) FROM sources s JOIN research_runs r ON s.run_id = r.id WHERE r.project_id = ?;",
+                (project_id,),
+            ).fetchone()[0]
+            reports_count = conn.execute(
+                "SELECT COUNT(DISTINCT rep.id) FROM reports rep JOIN research_runs r ON rep.run_id = r.id WHERE r.project_id = ?;",
+                (project_id,),
+            ).fetchone()[0]
+            syntheses_count = conn.execute(
+                "SELECT COUNT(*) FROM research_syntheses WHERE project_id = ?;",
+                (project_id,),
+            ).fetchone()[0]
+
+            return {
+                "project_id": project_id,
+                "runs_count": runs[0] if runs else 0,
+                "completed_runs_count": runs[1] if runs and runs[1] else 0,
+                "sources_count": sources_count,
+                "reports_count": reports_count,
+                "syntheses_count": syntheses_count,
+            }
 
     @staticmethod
     def delete(project_id: str) -> bool:
@@ -59,16 +154,32 @@ class ProjectRepository:
             cursor = conn.execute("DELETE FROM research_projects WHERE id = ?;", (project_id,))
             return cursor.rowcount > 0
 
+    @staticmethod
+    def delete_with_details(project_id: str) -> Dict[str, Any]:
+        stats = ProjectRepository.get_stats(project_id)
+        success = ProjectRepository.delete(project_id)
+        return {
+            "success": success,
+            "project_id": project_id,
+            "deleted_runs_count": stats["runs_count"],
+            "deleted_sources_count": stats["sources_count"],
+            "deleted_syntheses_count": stats["syntheses_count"],
+        }
+
 
 class RunRepository:
     @staticmethod
     def create(
         project_id: str,
         question: str,
+        domain: str = "Computer Science & AI",
         provider_mode: str = "demo",
         model_name: Optional[str] = None,
         search_providers: str = "openalex,arxiv",
-        max_sources: int = 10,
+        max_sources: int = 8,
+        publication_preference: str = "all",
+        evidence_preference: str = "full_text_preferred",
+        relevance_threshold: float = 50.0,
         max_retries: int = 2,
     ) -> Dict[str, Any]:
         run_id = str(uuid.uuid4())
@@ -77,32 +188,58 @@ class RunRepository:
             conn.execute(
                 """
                 INSERT INTO research_runs (
-                    id, project_id, question, status, provider_mode, model_name,
-                    search_providers, max_sources, retry_count, max_retries,
+                    id, project_id, question, domain, status, provider_mode, model_name,
+                    search_providers, max_sources, publication_preference, evidence_preference,
+                    relevance_threshold, retry_count, max_retries,
                     start_time, created_at, updated_at
-                ) VALUES (?, ?, ?, 'CREATED', ?, ?, ?, ?, 0, ?, ?, ?, ?);
+                ) VALUES (?, ?, ?, ?, 'CREATED', ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?);
                 """,
                 (
                     run_id,
                     project_id,
                     question.strip(),
+                    domain.strip() if domain else "Computer Science & AI",
                     provider_mode,
                     model_name or "",
                     search_providers,
                     max_sources,
+                    publication_preference,
+                    evidence_preference,
+                    relevance_threshold,
                     max_retries,
                     now,
                     now,
                     now,
                 ),
             )
+            # Update project's updated_at timestamp
+            conn.execute("UPDATE research_projects SET updated_at = ? WHERE id = ?;", (now, project_id))
         return RunRepository.get(run_id)  # type: ignore
 
     @staticmethod
     def get(run_id: str) -> Optional[Dict[str, Any]]:
         with db_manager.get_connection() as conn:
-            row = conn.execute("SELECT * FROM research_runs WHERE id = ?;", (run_id,)).fetchone()
-            return dict(row) if row else None
+            row = conn.execute(
+                """
+                SELECT r.*, p.title AS project_title, p.status AS project_status
+                FROM research_runs r
+                LEFT JOIN research_projects p ON r.project_id = p.id
+                WHERE r.id = ?;
+                """,
+                (run_id,),
+            ).fetchone()
+            if not row:
+                return None
+            run = dict(row)
+            if not run.get("domain"):
+                run["domain"] = "Computer Science & AI"
+            if not run.get("publication_preference"):
+                run["publication_preference"] = "all"
+            if not run.get("evidence_preference"):
+                run["evidence_preference"] = "full_text_preferred"
+            if run.get("relevance_threshold") is None:
+                run["relevance_threshold"] = 50.0
+            return run
 
     @staticmethod
     def update_status(
@@ -159,19 +296,151 @@ class RunRepository:
     def list_by_project(project_id: str) -> List[Dict[str, Any]]:
         with db_manager.get_connection() as conn:
             rows = conn.execute(
-                "SELECT * FROM research_runs WHERE project_id = ? ORDER BY created_at DESC;",
+                """
+                SELECT r.*,
+                       (SELECT COUNT(*) FROM sources WHERE run_id = r.id) AS source_count,
+                       (SELECT COUNT(*) FROM claims WHERE run_id = r.id) AS claim_count,
+                       (SELECT COUNT(*) FROM verification_results vr JOIN claims c ON vr.claim_id = c.id WHERE c.run_id = r.id AND vr.verdict = 'SUPPORTED') AS verified_count,
+                       (SELECT COUNT(*) FROM reports WHERE run_id = r.id) AS report_count
+                FROM research_runs r
+                WHERE r.project_id = ?
+                ORDER BY r.created_at DESC;
+                """,
                 (project_id,),
             ).fetchall()
-            return [dict(r) for r in rows]
+            results = []
+            for r in rows:
+                item = dict(r)
+                if not item.get("domain"):
+                    item["domain"] = "Computer Science"
+                item["has_report"] = bool(item.get("report_count", 0) > 0)
+                results.append(item)
+            return results
 
     @staticmethod
     def list_all(limit: int = 50) -> List[Dict[str, Any]]:
         with db_manager.get_connection() as conn:
             rows = conn.execute(
-                "SELECT * FROM research_runs ORDER BY created_at DESC LIMIT ?;",
+                """
+                SELECT r.*, p.title AS project_title
+                FROM research_runs r
+                LEFT JOIN research_projects p ON r.project_id = p.id
+                ORDER BY r.created_at DESC LIMIT ?;
+                """,
                 (limit,),
             ).fetchall()
             return [dict(r) for r in rows]
+
+    @staticmethod
+    def delete(run_id: str) -> bool:
+        with db_manager.get_connection() as conn:
+            row = conn.execute("SELECT project_id FROM research_runs WHERE id = ?;", (run_id,)).fetchone()
+            if not row:
+                return False
+            project_id = row[0]
+            cursor = conn.execute("DELETE FROM research_runs WHERE id = ?;", (run_id,))
+            if cursor.rowcount > 0:
+                now = utc_now_iso()
+                conn.execute("UPDATE research_projects SET updated_at = ? WHERE id = ?;", (now, project_id))
+                return True
+            return False
+
+
+class SynthesisRepository:
+    @staticmethod
+    def create(
+        project_id: str,
+        title: str,
+        contributing_run_ids: List[str],
+        markdown_content: str,
+        html_content: str,
+        citation_count: int = 0,
+        conflict_count: int = 0,
+        conflicts: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        synthesis_id = str(uuid.uuid4())
+        now = utc_now_iso()
+        conflicts_json = json.dumps(conflicts or [])
+        run_ids_json = json.dumps(contributing_run_ids)
+        with db_manager.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO research_syntheses (
+                    id, project_id, title, contributing_run_ids, markdown_content,
+                    html_content, citation_count, conflict_count, conflicts_json,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """,
+                (
+                    synthesis_id,
+                    project_id,
+                    title.strip(),
+                    run_ids_json,
+                    markdown_content,
+                    html_content,
+                    citation_count,
+                    conflict_count,
+                    conflicts_json,
+                    now,
+                    now,
+                ),
+            )
+            # update project updated_at
+            conn.execute("UPDATE research_projects SET updated_at = ? WHERE id = ?;", (now, project_id))
+
+        return SynthesisRepository.get(synthesis_id)  # type: ignore
+
+    @staticmethod
+    def get(synthesis_id: str) -> Optional[Dict[str, Any]]:
+        with db_manager.get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT s.*, p.title AS project_title
+                FROM research_syntheses s
+                LEFT JOIN research_projects p ON s.project_id = p.id
+                WHERE s.id = ?;
+                """,
+                (synthesis_id,),
+            ).fetchone()
+            if not row:
+                return None
+            item = dict(row)
+            try:
+                item["contributing_run_ids"] = json.loads(item["contributing_run_ids"])
+            except Exception:
+                item["contributing_run_ids"] = []
+            try:
+                item["conflicts"] = json.loads(item.get("conflicts_json") or "[]")
+            except Exception:
+                item["conflicts"] = []
+            return item
+
+    @staticmethod
+    def list_by_project(project_id: str) -> List[Dict[str, Any]]:
+        with db_manager.get_connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM research_syntheses WHERE project_id = ? ORDER BY created_at DESC;",
+                (project_id,),
+            ).fetchall()
+            results = []
+            for r in rows:
+                item = dict(r)
+                try:
+                    item["contributing_run_ids"] = json.loads(item["contributing_run_ids"])
+                except Exception:
+                    item["contributing_run_ids"] = []
+                try:
+                    item["conflicts"] = json.loads(item.get("conflicts_json") or "[]")
+                except Exception:
+                    item["conflicts"] = []
+                results.append(item)
+            return results
+
+    @staticmethod
+    def delete(synthesis_id: str) -> bool:
+        with db_manager.get_connection() as conn:
+            cursor = conn.execute("DELETE FROM research_syntheses WHERE id = ?;", (synthesis_id,))
+            return cursor.rowcount > 0
 
 
 class TaskRepository:
@@ -358,6 +627,45 @@ class SourceRepository:
                         return dict(s)
             return None
 
+    @staticmethod
+    def list_by_project(project_id: str) -> List[Dict[str, Any]]:
+        with db_manager.get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT s.*, r.id AS run_id, r.question AS run_question, r.created_at AS run_created_at,
+                       rel.decision AS relevance_decision, rel.relevance_score AS relevance_score, rel.direct_explanation AS relevance_reasoning,
+                       pub.peer_review_status, pub.venue_name, pub.document_type
+                FROM sources s
+                JOIN research_runs r ON s.run_id = r.id
+                LEFT JOIN source_relevance_evaluations rel ON s.id = rel.source_id
+                LEFT JOIN source_publication_classifications pub ON s.id = pub.source_id
+                WHERE r.project_id = ?
+                ORDER BY s.publication_year DESC, s.created_at DESC;
+                """,
+                (project_id,),
+            ).fetchall()
+
+            deduped: Dict[str, Dict[str, Any]] = {}
+            for row in rows:
+                item = dict(row)
+                key = item.get("doi") or item.get("arxiv_id") or "".join(ch for ch in item["title"].lower() if ch.isalnum())
+                if key in deduped:
+                    contributing = deduped[key].setdefault("contributing_runs", [])
+                    if not any(c["run_id"] == item["run_id"] for c in contributing):
+                        contributing.append({
+                            "run_id": item["run_id"],
+                            "question": item["run_question"],
+                            "created_at": item["run_created_at"]
+                        })
+                else:
+                    item["contributing_runs"] = [{
+                        "run_id": item["run_id"],
+                        "question": item["run_question"],
+                        "created_at": item["run_created_at"]
+                    }]
+                    deduped[key] = item
+            return list(deduped.values())
+
 
 class EvidenceRepository:
     @staticmethod
@@ -478,6 +786,9 @@ class EvidenceRepository:
             ).fetchall()
             return [dict(r) for r in rows]
 
+    # Alias for convenient testing/calling
+    add = add_passage
+
 
 class ClaimRepository:
     @staticmethod
@@ -507,6 +818,14 @@ class ClaimRepository:
                     )
 
         return ClaimRepository.get(claim_id)  # type: ignore
+
+    @staticmethod
+    def link_evidence(claim_id: str, evidence_id: str) -> None:
+        with db_manager.get_connection() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO claim_evidence (claim_id, evidence_id) VALUES (?, ?);",
+                (claim_id, evidence_id),
+            )
 
     @staticmethod
     def get(claim_id: str) -> Optional[Dict[str, Any]]:
@@ -679,6 +998,11 @@ class RelevanceRepository:
         excerpts_json = json.dumps(excerpts) if excerpts else None
 
         with db_manager.get_connection() as conn:
+            # Delete any prior evaluation for this source in the run to prevent duplicate records
+            conn.execute(
+                "DELETE FROM source_relevance_evaluations WHERE source_id = ? AND run_id = ?;",
+                (source_id, run_id),
+            )
             conn.execute(
                 """
                 INSERT INTO source_relevance_evaluations (
@@ -759,7 +1083,7 @@ class RelevanceRepository:
                 "SELECT * FROM source_relevance_evaluations WHERE run_id = ? ORDER BY created_at ASC;",
                 (run_id,),
             ).fetchall()
-            results = []
+            deduped_by_source: Dict[str, Dict[str, Any]] = {}
             for r in rows:
                 item = dict(r)
                 for k in ("positive_signals", "missing_information", "excerpts"):
@@ -770,8 +1094,8 @@ class RelevanceRepository:
                             item[k] = []
                     else:
                         item[k] = []
-                results.append(item)
-            return results
+                deduped_by_source[item["source_id"]] = item
+            return list(deduped_by_source.values())
 
 
 class PublicationClassificationRepository:
@@ -790,6 +1114,11 @@ class PublicationClassificationRepository:
         class_id = str(uuid.uuid4())
         now = utc_now_iso()
         with db_manager.get_connection() as conn:
+            # Delete any prior classification for this source in the run to prevent duplicate records
+            conn.execute(
+                "DELETE FROM source_publication_classifications WHERE source_id = ? AND run_id = ?;",
+                (source_id, run_id),
+            )
             conn.execute(
                 """
                 INSERT INTO source_publication_classifications (
@@ -842,7 +1171,11 @@ class PublicationClassificationRepository:
                 "SELECT * FROM source_publication_classifications WHERE run_id = ? ORDER BY created_at ASC;",
                 (run_id,),
             ).fetchall()
-            return [dict(r) for r in rows]
+            deduped_by_source: Dict[str, Dict[str, Any]] = {}
+            for r in rows:
+                item = dict(r)
+                deduped_by_source[item["source_id"]] = item
+            return list(deduped_by_source.values())
 
 
 class ReportRepository:

@@ -57,23 +57,71 @@ class DatabaseManager:
     def _run_migrations(self, conn: sqlite3.Connection) -> None:
         """Add any missing columns to existing tables without data loss."""
         cursor = conn.cursor()
-        cursor.execute("PRAGMA table_info(verification_results);")
-        columns = {row["name"] for row in cursor.fetchall()}
 
-        needed = {
+        # 1. verification_results migrations
+        cursor.execute("PRAGMA table_info(verification_results);")
+        vr_columns = {row["name"] for row in cursor.fetchall()}
+        needed_vr = {
             "contradicting_evidence": "TEXT",
             "supporting_excerpts": "TEXT",
             "verification_method": "TEXT",
             "confidence": "REAL DEFAULT 0.0",
             "is_direct_quote": "INTEGER NOT NULL DEFAULT 0",
         }
-        for col, col_type in needed.items():
-            if col not in columns:
+        for col, col_type in needed_vr.items():
+            if col not in vr_columns:
                 try:
                     conn.execute(f"ALTER TABLE verification_results ADD COLUMN {col} {col_type};")
                     logger.info("Migrated verification_results: added column %s", col)
                 except sqlite3.OperationalError as e:
                     logger.debug("Column migration note: %s", e)
+
+        # 2. research_projects migrations (status)
+        cursor.execute("PRAGMA table_info(research_projects);")
+        proj_columns = {row["name"] for row in cursor.fetchall()}
+        if "status" not in proj_columns:
+            try:
+                conn.execute("ALTER TABLE research_projects ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE';")
+                logger.info("Migrated research_projects: added column status")
+            except sqlite3.OperationalError as e:
+                logger.debug("Column migration note for research_projects: %s", e)
+
+        # 3. research_runs migrations (domain, publication_preference, evidence_preference, relevance_threshold)
+        cursor.execute("PRAGMA table_info(research_runs);")
+        run_columns = {row["name"] for row in cursor.fetchall()}
+        needed_run_cols = {
+            "domain": "TEXT DEFAULT 'Computer Science'",
+            "publication_preference": "TEXT DEFAULT 'all'",
+            "evidence_preference": "TEXT DEFAULT 'full_text_preferred'",
+            "relevance_threshold": "REAL DEFAULT 50.0",
+        }
+        for col, col_def in needed_run_cols.items():
+            if col not in run_columns:
+                try:
+                    conn.execute(f"ALTER TABLE research_runs ADD COLUMN {col} {col_def};")
+                    logger.info("Migrated research_runs: added column %s", col)
+                except sqlite3.OperationalError as e:
+                    logger.debug("Column migration note for research_runs: %s", e)
+
+        # 4. research_syntheses table creation
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS research_syntheses (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                contributing_run_ids TEXT NOT NULL,
+                markdown_content TEXT NOT NULL,
+                html_content TEXT NOT NULL,
+                citation_count INTEGER NOT NULL DEFAULT 0,
+                conflict_count INTEGER NOT NULL DEFAULT 0,
+                conflicts_json TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (project_id) REFERENCES research_projects(id) ON DELETE CASCADE
+            );
+            """
+        )
 
 
     @contextmanager

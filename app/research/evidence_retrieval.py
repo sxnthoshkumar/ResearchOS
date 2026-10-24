@@ -32,6 +32,8 @@ class EvidenceRetrievalPipeline:
         providers: Optional[List[str]] = None,
         max_sources_per_query: int = 5,
         is_demo: bool = False,
+        publication_preference: str = "all",
+        evidence_preference: str = "full_text_preferred",
     ) -> List[Dict[str, Any]]:
         """Harvest, deduplicate, and persist sources and passages for a query."""
         if not providers:
@@ -92,6 +94,17 @@ class EvidenceRetrievalPipeline:
             except Exception as e:
                 logger.warning("arXiv search exception: %s", e)
 
+        # Filter or reorder candidates based on publication preference
+        if publication_preference == "peer_reviewed_only":
+            candidates = [
+                c for c in candidates
+                if c.get("provider") != "arxiv" and c.get("doc_type") != "preprint"
+            ]
+        elif publication_preference == "preprints_preferred":
+            candidates.sort(
+                key=lambda c: 0 if (c.get("provider") == "arxiv" or c.get("doc_type") == "preprint") else 1
+            )
+
         # Deduplicate candidates across providers
         for item in candidates:
             existing = SourceRepository.find_duplicate(
@@ -103,12 +116,12 @@ class EvidenceRetrievalPipeline:
             if existing:
                 continue
 
-            # Ingest passages (PDF if open-access, else abstract fallback)
+            # Ingest passages based on evidence_preference
             passages: List[Dict[str, Any]] = []
             inspected_full = 0
             access_status = "metadata_only"
 
-            if item.get("pdf_url"):
+            if evidence_preference != "abstract_only" and item.get("pdf_url"):
                 try:
                     pdf_passages = await DocumentExtractor.extract_from_pdf_url(item["pdf_url"])
                     if pdf_passages:
@@ -118,7 +131,7 @@ class EvidenceRetrievalPipeline:
                 except Exception as e:
                     logger.debug("PDF extraction failed for %s: %s", item.get("pdf_url"), e)
 
-            if not passages and item.get("abstract"):
+            if not passages and evidence_preference != "full_text_required" and item.get("abstract"):
                 try:
                     abstract_passages = DocumentExtractor.extract_from_abstract(item["abstract"])
                     if abstract_passages:
@@ -126,6 +139,10 @@ class EvidenceRetrievalPipeline:
                         access_status = "abstract_only"
                 except Exception as e:
                     logger.debug("Abstract extraction failed for %s: %s", item.get("title"), e)
+
+            if evidence_preference == "full_text_required" and inspected_full == 0:
+                logger.debug("Skipping source %s: strict full_text_required enabled but no PDF parsed.", item.get("title"))
+                continue
 
             # Save newly discovered source with accurate provenance and inspection status
             saved_source = SourceRepository.add(

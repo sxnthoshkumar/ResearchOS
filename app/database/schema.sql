@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS research_projects (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     description TEXT,
+    status TEXT NOT NULL DEFAULT 'ACTIVE', -- ACTIVE, ARCHIVED
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -16,17 +17,37 @@ CREATE TABLE IF NOT EXISTS research_runs (
     id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL,
     question TEXT NOT NULL,
+    domain TEXT DEFAULT 'Computer Science',
     status TEXT NOT NULL, -- CREATED, PLANNING, RESEARCHING, ANALYZING, VERIFYING, RETRYING, GENERATING_REPORT, EVALUATING, COMPLETED, FAILED, CANCELLED
     provider_mode TEXT NOT NULL, -- demo, openai, generic
     model_name TEXT,
     search_providers TEXT NOT NULL, -- openalex,arxiv or comma-separated
-    max_sources INTEGER NOT NULL DEFAULT 10,
+    max_sources INTEGER NOT NULL DEFAULT 8,
+    publication_preference TEXT DEFAULT 'all', -- all, peer_reviewed_only, preprints_preferred
+    evidence_preference TEXT DEFAULT 'full_text_preferred', -- full_text_preferred, abstract_only, full_text_required
+    relevance_threshold REAL DEFAULT 50.0,
     retry_count INTEGER NOT NULL DEFAULT 0,
     max_retries INTEGER NOT NULL DEFAULT 2,
     error_message TEXT,
     start_time TEXT,
     completed_time TEXT,
     duration_seconds REAL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES research_projects(id) ON DELETE CASCADE
+);
+
+-- 2b. Research Syntheses (Combined Multi-Run Syntheses)
+CREATE TABLE IF NOT EXISTS research_syntheses (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    contributing_run_ids TEXT NOT NULL, -- JSON array of run IDs
+    markdown_content TEXT NOT NULL,
+    html_content TEXT NOT NULL,
+    citation_count INTEGER NOT NULL DEFAULT 0,
+    conflict_count INTEGER NOT NULL DEFAULT 0,
+    conflicts_json TEXT, -- JSON array of detected conflicts / divergent claims
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (project_id) REFERENCES research_projects(id) ON DELETE CASCADE

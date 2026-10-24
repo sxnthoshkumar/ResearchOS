@@ -306,8 +306,12 @@ class PublicationClassifier:
                 last_verified_date=now_str,
             )
 
-        # Check peer-reviewed journal
-        if raw_type in ("journal-article", "article") and (src_type == "journal" or is_in_doaj or venue_name):
+        # Check peer-reviewed journal: requires verified journal source type, DOAJ indexing, or recognized journal venue
+        is_journal_venue = bool(venue_name and any(
+            j_term in venue_name.lower()
+            for j_term in ("journal", "transactions", "annals", "nature", "science", "letters", "review", "communications", "ieee", "acm", "springer", "elsevier")
+        ))
+        if raw_type in ("journal-article", "article") and (src_type == "journal" or is_in_doaj or is_journal_venue):
             evidence = f"Published in recognized scholarly journal '{venue_name or 'Scholarly Journal'}'"
             if is_in_doaj:
                 evidence += " (Indexed in Directory of Open Access Journals - DOAJ)"

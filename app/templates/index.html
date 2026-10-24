@@ -3,422 +3,1005 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Autonomous AI Research Assistant | Multi-Agent Collaboration</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <title>Autonomous AI Research Assistant | Multi-Agent Collaborative Workspace</title>
+  <link rel="stylesheet" href="/static/css/style.css?v=2.4">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div class="app-container">
+  <div class="app-layout">
     <!-- Sidebar Navigation -->
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <div class="brand-badge">Academic Engine</div>
-        <div class="brand-title">Research Assistant</div>
-        <div class="brand-subtitle">5-Agent Collaborative Pipeline</div>
+    <aside class="app-sidebar" id="app-sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-badge">Academic AI Engine</div>
+        <div class="brand-name">ResearchOS</div>
+        <div class="brand-sub">5-Agent Collaborative Pipeline</div>
       </div>
 
-      <ul class="nav-menu">
-        <li>
-          <a class="nav-item active" data-screen="setup">
-            <span class="nav-icon">⚙️</span>
-            <span>Research Setup</span>
-          </a>
-        </li>
-        <li>
-          <a class="nav-item" data-screen="monitor">
-            <span class="nav-icon">📊</span>
-            <span>Agent Monitor</span>
-          </a>
-        </li>
-        <li>
-          <a class="nav-item" data-screen="sources">
-            <span class="nav-icon">📚</span>
-            <span>Source Explorer</span>
-          </a>
-        </li>
-        <li>
-          <a class="nav-item" data-screen="verification">
-            <span class="nav-icon">🔍</span>
-            <span>Verification Matrix</span>
-          </a>
-        </li>
-        <li>
-          <a class="nav-item" data-screen="report">
-            <span class="nav-icon">📑</span>
-            <span>Final Report</span>
-          </a>
-        </li>
-        <li>
-          <a class="nav-item" data-screen="history">
-            <span class="nav-icon">📈</span>
-            <span>Evaluation & Benchmarks</span>
-          </a>
-        </li>
-      </ul>
+      <!-- Quick Project Context Pill -->
+      <div class="sidebar-project-context" id="sidebar-project-context" style="display:none;">
+        <div class="context-label">Active Workspace</div>
+        <div class="context-title" id="sidebar-project-title">No Project Selected</div>
+        <div class="context-meta" id="sidebar-project-meta">0 Runs &bull; Active</div>
+      </div>
 
+      <!-- Main Navigation Menu -->
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">Navigation</div>
+        <ul class="nav-list">
+          <li>
+            <a class="nav-link active" data-screen="projects" id="nav-projects">
+              <span class="nav-icon">🗂️</span>
+              <span class="nav-label">Projects Hub</span>
+            </a>
+          </li>
+          <li>
+            <a class="nav-link" data-screen="workspace" id="nav-workspace">
+              <span class="nav-icon">🔬</span>
+              <span class="nav-label">Project Workspace</span>
+              <span class="nav-badge" id="nav-runs-count" style="display:none;">0</span>
+            </a>
+          </li>
+          <li>
+            <a class="nav-link" data-screen="library" id="nav-library">
+              <span class="nav-icon">📚</span>
+              <span class="nav-label">Research Library</span>
+            </a>
+          </li>
+          <li>
+            <a class="nav-link" data-screen="run" id="nav-run" style="display:none;">
+              <span class="nav-icon">⚡</span>
+              <span class="nav-label">Run Results</span>
+              <span class="nav-badge status-pulse" id="nav-run-status">IDLE</span>
+            </a>
+          </li>
+          <li>
+            <a class="nav-link" data-screen="synthesis" id="nav-synthesis" style="display:none;">
+              <span class="nav-icon">🧬</span>
+              <span class="nav-label">Synthesis View</span>
+            </a>
+          </li>
+          <li>
+            <a class="nav-link" data-screen="benchmarks" id="nav-benchmarks">
+              <span class="nav-icon">📈</span>
+              <span class="nav-label">Evaluation & Benchmarks</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+
+      <!-- Sidebar Status Card -->
       <div class="sidebar-footer">
-        <div class="mode-card">
-          <div class="mode-indicator">
-            <span class="status-dot demo" id="status-dot-indicator"></span>
-            <span id="provider-status-badge" class="badge badge-info">DEMO MODE</span>
+        <div class="system-status-card">
+          <div class="status-indicator-row">
+            <span class="status-pulse-dot" id="sidebar-ollama-dot"></span>
+            <span class="status-badge-text" id="sidebar-ollama-badge">OLLAMA OFFLINE</span>
           </div>
-          <div id="provider-status-label" style="color:var(--text-muted); font-size:0.75rem;">
-            Demonstration Provider (Offline)
-          </div>
+          <div class="status-caption" id="sidebar-ollama-caption">Checking inference provider...</div>
         </div>
       </div>
     </aside>
 
-    <!-- Main Viewport -->
-    <main class="main-viewport">
-      <header class="top-bar">
-        <div class="top-title">
-          <span>Academic Research Dashboard</span>
-          <span class="project-badge" id="active-project-badge">Project: Active</span>
-          <span class="project-badge" id="active-run-badge" style="display:none; color:var(--accent-cyan); border-color:rgba(6, 182, 212, 0.4);">Run: None</span>
-          <span class="project-badge" id="ollama-status-badge" style="display:inline-flex; font-size:0.75rem; color:var(--accent-cyan);">Ollama: Checking...</span>
+    <!-- Main Content Area -->
+    <div class="app-main">
+      <!-- Universal Top Bar Header -->
+      <header class="top-header">
+        <div class="header-left">
+          <nav class="breadcrumb-trail" id="breadcrumbs" aria-label="Breadcrumb">
+            <span class="breadcrumb-item"><a href="#projects" onclick="navigateTo('projects'); return false;">Projects</a></span>
+            <span class="breadcrumb-separator" id="bc-sep-1" style="display:none;">/</span>
+            <span class="breadcrumb-item active" id="bc-project" style="display:none;">Active Project</span>
+            <span class="breadcrumb-separator" id="bc-sep-2" style="display:none;">/</span>
+            <span class="breadcrumb-item active" id="bc-run" style="display:none;">Run #--</span>
+          </nav>
         </div>
-        <div class="top-actions">
-          <button class="btn btn-secondary btn-sm" id="btn-load-example">Load Example Question</button>
+
+        <div class="header-right">
+          <span class="header-pill" id="header-ollama-pill">Ollama: Checking...</span>
+          <button class="btn btn-secondary btn-sm" id="btn-top-new-project" onclick="openCreateProjectModal()">
+            <span class="btn-icon">+</span> New Project
+          </button>
+          <button class="btn btn-primary btn-sm" id="btn-top-new-run" onclick="openNewRunModal()" style="display:none;">
+            <span class="btn-icon">⚡</span> New Research Run
+          </button>
         </div>
       </header>
 
-      <!-- SCREEN A: Research Setup -->
-      <section id="view-setup" class="view-panel active">
-        <div class="card">
-          <div class="card-header">
-            <div class="card-title">Initiate Autonomous Research Investigation</div>
-          </div>
-          <form id="research-setup-form">
-            <div class="form-group">
-              <label class="form-label" for="project-select">Target Project</label>
-              <select id="project-select" class="form-control">
-                <option value="">-- Create New Project --</option>
-              </select>
+      <!-- Scrollable Main Viewport -->
+      <main class="content-viewport">
+        <!-- ======================================================== -->
+        <!-- VIEW 1: PROJECTS HUB (Landing Page)                     -->
+        <!-- ======================================================== -->
+        <section id="view-projects" class="view-panel active">
+          <div class="view-hero">
+            <div class="hero-content">
+              <h1 class="hero-title">Research Workspaces</h1>
+              <p class="hero-desc">
+                Organize autonomous literature investigations into dedicated projects. Each project encapsulates research inquiries, verified evidence trails, unified bibliographies, and synthesized reports.
+              </p>
             </div>
-
-            <div class="form-group">
-              <label class="form-label" for="research-question">Research Question (Academic Query)</label>
-              <textarea id="research-question" class="form-control" placeholder="Enter an in-depth academic inquiry, e.g.: Compare Retrieval-Augmented Generation (RAG) and fine-tuning for domain-specific question answering..." required></textarea>
-            </div>
-
-            <div class="grid-2">
-              <div class="form-group">
-                <label class="form-label" for="research-topic">Academic Domain / Field</label>
-                <input type="text" id="research-topic" class="form-control" placeholder="e.g. Computer Science, Bioinformatics, Economics">
-              </div>
-
-              <div class="form-group">
-                <label class="form-label" for="max-sources">Maximum Source Retrieval Cap</label>
-                <input type="number" id="max-sources" class="form-control" value="8" min="2" max="30">
-              </div>
-            </div>
-
-            <div class="grid-2">
-              <div class="form-group">
-                <label class="form-label" for="research-mode">Research Execution Mode</label>
-                <select id="research-mode" class="form-control">
-                  <option value="ollama" selected>Local Ollama AI (qwen2.5:3b) &mdash; Genuine LLM Inference</option>
-                  <option value="demo">Deterministic Demo Benchmark &mdash; Offline Synthetic Data</option>
-                </select>
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Scholarly Repositories</label>
-                <div style="display:flex; gap:16px; margin-top:8px;">
-                  <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-                    <input type="checkbox" id="source-openalex" checked>
-                    <span>OpenAlex (Peer-Reviewed)</span>
-                  </label>
-                  <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-                    <input type="checkbox" id="source-arxiv" checked>
-                    <span>arXiv (Preprints)</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <button type="submit" id="btn-start-research" class="btn btn-primary" style="width:100%; margin-top:10px;">
-              Start Research Run
-            </button>
-          </form>
-        </div>
-      </section>
-
-      <!-- SCREEN B: Agent Monitor -->
-      <section id="view-monitor" class="view-panel">
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-title">Five-Agent Collaboration Monitor</div>
-              <div id="monitor-question-display" style="font-size:0.85rem; color:var(--text-secondary); margin-top:4px;">
-                Awaiting active run...
-              </div>
-            </div>
-            <div style="display:flex; align-items:center; gap:12px;">
-              <span id="run-state-badge" class="badge badge-info">State: IDLE</span>
-              <button id="btn-cancel-run" class="btn btn-danger btn-sm">Cancel Run</button>
-            </div>
-          </div>
-
-          <!-- 5 Agent Cards Grid -->
-          <div class="grid-5" style="margin-bottom:24px;">
-            <!-- Agent 1: Planner -->
-            <div id="agent-card-planner" class="agent-card">
-              <div class="agent-header">
-                <span class="agent-name">1. Planner</span>
-                <span class="agent-badge">IDLE</span>
-              </div>
-              <div class="agent-role">Question decomposition & query strategy</div>
-              <div class="agent-task">Awaiting trigger...</div>
-              <div class="agent-meta">
-                <span>Phase: 1</span>
-                <span>Subquestions: 3</span>
-              </div>
-            </div>
-
-            <!-- Agent 2: Researcher -->
-            <div id="agent-card-researcher" class="agent-card">
-              <div class="agent-header">
-                <span class="agent-name">2. Researcher</span>
-                <span class="agent-badge">IDLE</span>
-              </div>
-              <div class="agent-role">Scholarly retrieval & PDF extraction</div>
-              <div class="agent-task">Awaiting trigger...</div>
-              <div class="agent-meta">
-                <span>Phase: 2</span>
-                <span>OpenAlex & arXiv</span>
-              </div>
-            </div>
-
-            <!-- Agent 3: Analyst -->
-            <div id="agent-card-analyst" class="agent-card">
-              <div class="agent-header">
-                <span class="agent-name">3. Analyst</span>
-                <span class="agent-badge">IDLE</span>
-              </div>
-              <div class="agent-role">Passage synthesis & atomic claims</div>
-              <div class="agent-task">Awaiting trigger...</div>
-              <div class="agent-meta">
-                <span>Phase: 3</span>
-                <span>Evidence links</span>
-              </div>
-            </div>
-
-            <!-- Agent 4: Fact-Checker -->
-            <div id="agent-card-fact_checker" class="agent-card">
-              <div class="agent-header">
-                <span class="agent-name">4. Fact-Checker</span>
-                <span class="agent-badge">IDLE</span>
-              </div>
-              <div class="agent-role">Adversarial ground verification</div>
-              <div class="agent-task">Awaiting trigger...</div>
-              <div class="agent-meta">
-                <span>Phase: 4</span>
-                <span>Verdicts audit</span>
-              </div>
-            </div>
-
-            <!-- Agent 5: Report Writer -->
-            <div id="agent-card-report_writer" class="agent-card">
-              <div class="agent-header">
-                <span class="agent-name">5. Report Writer</span>
-                <span class="agent-badge">IDLE</span>
-              </div>
-              <div class="agent-role">Quality-gated academic synthesis</div>
-              <div class="agent-task">Awaiting trigger...</div>
-              <div class="agent-meta">
-                <span>Phase: 5</span>
-                <span>Numbered citations</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Live Orchestrator Execution Log Terminal -->
-          <div class="card-title" style="font-size:0.95rem; margin-bottom:10px;">Orchestrator Real-Time Event Stream</div>
-          <div class="terminal-box" id="terminal-logs">
-            <div class="log-entry">
-              <span class="log-time">[Ready]</span>
-              <span>System initialized. Submit research inquiry to monitor real-time execution.</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- SCREEN C: Source Explorer -->
-      <section id="view-sources" class="view-panel">
-        <div class="card">
-          <div class="card-header">
-            <div class="card-title">Retrieved Scholarly Literature & Registry</div>
-          </div>
-          <div class="table-responsive">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th style="width:50px;">#</th>
-                  <th>Title & Authors</th>
-                  <th>Venue & Year</th>
-                  <th>Relevance & Decision</th>
-                  <th>Peer Review Status</th>
-                  <th>Access Level</th>
-                  <th>Canonical Link</th>
-                </tr>
-              </thead>
-              <tbody id="sources-table-body">
-                <tr>
-                  <td colspan="7" class="empty-state">No sources retrieved yet. Start a research run to populate.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <!-- SCREEN D: Verification Matrix -->
-      <section id="view-verification" class="view-panel">
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-title">Factual Claim Verification Matrix</div>
-              <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;">
-                Each atomic claim evaluated independently against SQLite-indexed evidence passages.
-              </div>
-            </div>
-          </div>
-          <div id="claims-container">
-            <div class="empty-state">No claims available to audit. Start a research run in Setup first.</div>
-          </div>
-        </div>
-      </section>
-
-      <!-- SCREEN E: Final Report -->
-      <section id="view-report" class="view-panel">
-        <div class="card">
-          <div class="card-header">
-            <div class="card-title">Generated Scholarly Research Report</div>
-            <div style="display:flex; gap:10px; align-items:center;">
-              <a id="btn-export-md" class="btn btn-secondary btn-sm" href="#" target="_blank">Export Markdown</a>
-              <a id="btn-export-html" class="btn btn-primary btn-sm" href="#" target="_blank">Export HTML</a>
-            </div>
-          </div>
-          <!-- Real Run Association & Metadata Banner -->
-          <div id="report-meta-box" class="report-meta-card" style="display:none;"></div>
-          <!-- Report Viewer Container -->
-          <div id="report-view-container">
-            <div class="empty-state">No report generated for active run yet.</div>
-          </div>
-        </div>
-      </section>
-
-      <!-- SCREEN F: Evaluation & Benchmarks -->
-      <section id="view-history" class="view-panel">
-        <div class="card">
-          <div class="card-header">
-            <div>
-              <div class="card-title">Automated Benchmark Evaluation Suite</div>
-              <div style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;">
-                Curated 20-question multidisciplinary benchmark comparing 5-Agent Collaborative vs Single-Agent Baseline.
-              </div>
-          <!-- Real-Time Run Evidence Quality & Validation Metrics -->
-          <div style="margin-bottom:28px;">
-            <div class="card-title" style="font-size:0.95rem; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
-              <span>Active Run Evidence Validation & Reliability Metrics</span>
-              <span id="metrics-run-badge" style="font-size:0.75rem; color:var(--text-secondary); font-weight:normal;">Awaiting active run...</span>
-            </div>
-            <div class="grid-4" id="validation-metrics-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px;">
-              <div class="card" style="padding:14px; background:var(--bg-surface); border:1px solid var(--border-color);">
-                <div style="font-size:0.75rem; text-transform:uppercase; color:var(--text-secondary); font-weight:600;">Relevance Evaluation</div>
-                <div id="metric-relevance-coverage" style="font-size:1.35rem; font-weight:700; color:#38bdf8; margin:6px 0;">--%</div>
-                <div id="metric-relevance-details" style="font-size:0.75rem; color:#94a3b8;">
-                  Evaluated / Total Sources<br>Inc: -- | Rev: -- | Exc: --
-                </div>
-              </div>
-              <div class="card" style="padding:14px; background:var(--bg-surface); border:1px solid var(--border-color);">
-                <div style="font-size:0.75rem; text-transform:uppercase; color:var(--text-secondary); font-weight:600;">Citation ID Validity</div>
-                <div id="metric-citation-validity" style="font-size:1.35rem; font-weight:700; color:#4ade80; margin:6px 0;">--%</div>
-                <div id="metric-citation-details" style="font-size:0.75rem; color:#94a3b8;">
-                  Valid IDs / Report Citations<br>Provenance: --%
-                </div>
-              </div>
-              <div class="card" style="padding:14px; background:var(--bg-surface); border:1px solid var(--border-color);">
-                <div style="font-size:0.75rem; text-transform:uppercase; color:var(--text-secondary); font-weight:600;">Claim Verification</div>
-                <div id="metric-claim-coverage" style="font-size:1.35rem; font-weight:700; color:#fbbf24; margin:6px 0;">--%</div>
-                <div id="metric-claim-details" style="font-size:0.75rem; color:#94a3b8;">
-                  Audited / Total Claims<br>Support Rate: --%
-                </div>
-              </div>
-              <div class="card" style="padding:14px; background:var(--bg-surface); border:1px solid var(--border-color);">
-                <div style="font-size:0.75rem; text-transform:uppercase; color:var(--text-secondary); font-weight:600;">Publication Status</div>
-                <div id="metric-pub-coverage" style="font-size:1.35rem; font-weight:700; color:#a78bfa; margin:6px 0;">--%</div>
-                <div id="metric-pub-details" style="font-size:0.75rem; color:#94a3b8;">
-                  Classified / Total Sources<br>Unknown Rate: --%
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="grid-2" style="margin-bottom:20px;">
-            <div class="form-group">
-              <label class="form-label" for="benchmark-question-select">Select Benchmark Question</label>
-              <select id="benchmark-question-select" class="form-control">
-                <option value="">-- Choose Evaluation Question --</option>
-              </select>
-            </div>
-            <div style="display:flex; align-items:flex-end; margin-bottom:20px;">
-              <button id="btn-run-benchmark" class="btn btn-primary" onclick="runBenchmarkTest()" style="width:100%;">
-                Run Benchmark Comparison
+            <div class="hero-actions">
+              <button class="btn btn-primary btn-lg" onclick="openCreateProjectModal()">
+                <span class="btn-icon">+</span> Create New Project
               </button>
             </div>
           </div>
 
-          <div class="card-title" style="font-size:0.95rem; margin-bottom:12px;">Benchmark Empirical Results</div>
-          <div class="table-responsive" style="margin-bottom:32px;">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th style="min-width: 90px;">Question ID</th>
-                  <th style="min-width: 170px;">Architecture</th>
-                  <th style="min-width: 110px;">Execution Mode</th>
-                  <th style="min-width: 100px;">Relevance</th>
-                  <th style="min-width: 100px;">Coverage</th>
-                  <th style="min-width: 140px;">Claim Support Rate</th>
-                  <th style="min-width: 140px;">Citation Correctness</th>
-                  <th style="min-width: 90px;">Runtime</th>
-                </tr>
-              </thead>
-              <tbody id="benchmarks-body">
-                <tr>
-                  <td colspan="8" class="empty-state">Loading benchmark history...</td>
-                </tr>
-              </tbody>
-            </table>
+          <!-- Project Filter & Search Toolbar -->
+          <div class="toolbar-card">
+            <div class="search-input-wrapper">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="project-search-input" class="search-input" placeholder="Search projects by name, description, or question..." oninput="handleProjectSearch()">
+            </div>
+            <div class="filter-group">
+              <button class="filter-btn active" data-filter="ALL" onclick="setProjectFilter('ALL', this)">All Projects</button>
+              <button class="filter-btn" data-filter="ACTIVE" onclick="setProjectFilter('ACTIVE', this)">Active</button>
+              <button class="filter-btn" data-filter="ARCHIVED" onclick="setProjectFilter('ARCHIVED', this)">Archived</button>
+            </div>
           </div>
 
-          <div class="card-title" style="font-size:0.95rem; margin-bottom:12px;">Previous Research Runs</div>
-          <div class="table-responsive">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th style="min-width: 140px;">Project</th>
-                  <th style="min-width: 260px;">Research Question</th>
-                  <th style="min-width: 110px;">Status</th>
-                  <th style="min-width: 110px;">Mode</th>
-                  <th style="min-width: 70px;">Retries</th>
-                  <th style="min-width: 140px;">Created At</th>
-                  <th style="min-width: 220px;">Actions</th>
-                </tr>
-              </thead>
-              <tbody id="history-runs-body">
-                <tr>
-                  <td colspan="7" class="empty-state">No prior research runs found.</td>
-                </tr>
-              </tbody>
-            </table>
+          <!-- Projects Grid Container -->
+          <div class="projects-grid" id="projects-grid">
+            <div class="loading-state">
+              <div class="spinner"></div>
+              <span>Loading research workspaces...</span>
+            </div>
           </div>
-        </div>
-      </section>
-    </main>
+        </section>
+
+        <!-- ======================================================== -->
+        <!-- VIEW 2: PROJECT WORKSPACE                                -->
+        <!-- ======================================================== -->
+        <section id="view-workspace" class="view-panel">
+          <div class="project-header-card">
+            <div class="project-title-row">
+              <div class="title-with-badge">
+                <h1 class="project-heading" id="workspace-title">Loading Project...</h1>
+                <span class="project-status-pill active" id="workspace-status-pill">ACTIVE</span>
+              </div>
+              <div class="project-header-actions">
+                <button class="btn btn-secondary btn-sm" onclick="openEditProjectModal()">
+                  <span>✏️</span> Edit Details
+                </button>
+                <button class="btn btn-secondary btn-sm" id="btn-workspace-archive" onclick="toggleArchiveProject()">
+                  <span>📦</span> Archive
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="openDeleteProjectModal()">
+                  <span>🗑️</span> Delete
+                </button>
+              </div>
+            </div>
+
+            <p class="project-desc-text" id="workspace-desc">No description provided for this research workspace.</p>
+
+            <!-- Project Stats Ribbon -->
+            <div class="project-stats-ribbon">
+              <div class="stat-cell">
+                <div class="stat-num" id="workspace-stat-runs">0</div>
+                <div class="stat-lbl">Research Inquiries</div>
+              </div>
+              <div class="stat-cell">
+                <div class="stat-num" id="workspace-stat-completed">0</div>
+                <div class="stat-lbl">Completed Reports</div>
+              </div>
+              <div class="stat-cell">
+                <div class="stat-num" id="workspace-stat-sources">0</div>
+                <div class="stat-lbl">Indexed Sources</div>
+              </div>
+              <div class="stat-cell">
+                <div class="stat-num" id="workspace-stat-syntheses">0</div>
+                <div class="stat-lbl">Multi-Run Syntheses</div>
+              </div>
+              <div class="stat-action-cell">
+                <button class="btn btn-primary" onclick="openNewRunModal()">
+                  <span class="btn-icon">⚡</span> New Research Run
+                </button>
+                <button class="btn btn-secondary" id="btn-create-synthesis" onclick="openCreateSynthesisModal()">
+                  <span class="btn-icon">🧬</span> Create Synthesis
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Project Workspace Tabs -->
+          <div class="workspace-tabs-bar">
+            <button class="tab-btn active" data-tab="runs" onclick="switchWorkspaceTab('runs', this)">
+              <span>⚡</span> Inquiry Runs History (<span id="tab-runs-count">0</span>)
+            </button>
+            <button class="tab-btn" data-tab="library" onclick="switchWorkspaceTab('library', this)">
+              <span>📚</span> Project Research Library (<span id="tab-sources-count">0</span>)
+            </button>
+            <button class="tab-btn" data-tab="syntheses" onclick="switchWorkspaceTab('syntheses', this)">
+              <span>🧬</span> Multi-Run Syntheses (<span id="tab-syntheses-count">0</span>)
+            </button>
+          </div>
+
+          <!-- Workspace Tab 1: Runs History -->
+          <div id="wtab-runs" class="wtab-content active">
+            <div class="runs-list-toolbar">
+              <input type="text" id="run-search-input" class="search-input" placeholder="Search inquiry questions in this project..." oninput="handleRunSearch()">
+              <div class="filter-group">
+                <button class="filter-btn active" data-run-filter="ALL" onclick="setRunFilter('ALL', this)">All Runs</button>
+                <button class="filter-btn" data-run-filter="COMPLETED" onclick="setRunFilter('COMPLETED', this)">Completed</button>
+                <button class="filter-btn" data-run-filter="RUNNING" onclick="setRunFilter('RUNNING', this)">In Progress</button>
+              </div>
+            </div>
+
+            <div class="runs-container" id="workspace-runs-list">
+              <div class="empty-state">No research runs in this workspace yet. Start your first research inquiry above.</div>
+            </div>
+          </div>
+
+          <!-- Workspace Tab 2: Project Research Library -->
+          <div id="wtab-library" class="wtab-content">
+            <div class="library-header-row">
+              <div>
+                <h3 class="section-title">Aggregated Project Literature Base</h3>
+                <p class="section-subtitle">Consolidated and de-duplicated scientific sources across all research runs in this project.</p>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th style="width:40px;">#</th>
+                    <th style="min-width:280px;">Title & Authors</th>
+                    <th style="min-width:110px;">Year & Venue</th>
+                    <th style="min-width:150px;">Peer Review Status</th>
+                    <th style="min-width:130px;">Relevance Decision</th>
+                    <th style="min-width:180px;">Cited in Inquiries</th>
+                    <th style="min-width:120px;">Identifiers</th>
+                  </tr>
+                </thead>
+                <tbody id="project-library-table-body">
+                  <tr>
+                    <td colspan="7" class="empty-state">Loading library sources...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Workspace Tab 3: Syntheses Archive -->
+          <div id="wtab-syntheses" class="wtab-content">
+            <div class="syntheses-header-row">
+              <div>
+                <h3 class="section-title">Cross-Inquiry Syntheses</h3>
+                <p class="section-subtitle">Synthesized meta-reviews reconciling consensus and highlighting conflicting perspectives across multiple runs.</p>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="openCreateSynthesisModal()">
+                + Create Research Synthesis
+              </button>
+            </div>
+
+            <div class="syntheses-grid" id="project-syntheses-grid">
+              <div class="empty-state">No multi-run syntheses generated yet. When you have 2 or more completed inquiries, click "Create Research Synthesis".</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ======================================================== -->
+        <!-- VIEW 3: DEDICATED RUN RESULTS                           -->
+        <!-- ======================================================== -->
+        <section id="view-run" class="view-panel">
+          <!-- Run Sticky Header Card -->
+          <div class="run-header-card">
+            <div class="run-header-top">
+              <div class="run-breadcrumb-box">
+                <a class="back-link" onclick="backToWorkspace()">&larr; Back to Project Workspace</a>
+                <span class="run-domain-badge" id="run-domain-tag">Computer Science</span>
+                <span class="badge" id="run-status-badge">COMPLETED</span>
+              </div>
+              <div class="run-actions-box">
+                <button class="btn btn-danger btn-sm" id="btn-cancel-run" style="display:none;" onclick="cancelActiveRun()">Cancel Run</button>
+                <a class="btn btn-secondary btn-sm" id="btn-run-export-md" href="#" target="_blank">Export Markdown</a>
+                <a class="btn btn-primary btn-sm" id="btn-run-export-html" href="#" target="_blank">Export HTML</a>
+                <button class="btn btn-danger btn-sm" id="btn-delete-active-run" onclick="openDeleteRunModal(AppState.currentRunId)"><span>🗑️</span> Delete Run</button>
+              </div>
+            </div>
+
+            <h1 class="run-question-title" id="run-question-heading">Loading Research Inquiry...</h1>
+
+            <div class="run-meta-row">
+              <span class="run-meta-item"><span>🆔 Run ID:</span> <code id="run-id-display">--</code></span>
+              <span class="run-meta-item"><span>🤖 Model:</span> <span id="run-model-display">--</span></span>
+              <span class="run-meta-item"><span>📅 Created:</span> <span id="run-date-display">--</span></span>
+              <span class="run-meta-item"><span>⏱️ Duration:</span> <span id="run-duration-display">--</span></span>
+            </div>
+
+            <!-- Run Sub-Navigation Tabs -->
+            <div class="run-subtabs-bar">
+              <button class="run-subtab-btn active" data-subtab="overview" onclick="switchRunSubtab('overview', this)">
+                📊 Overview & Metrics
+              </button>
+              <button class="run-subtab-btn" data-subtab="monitor" onclick="switchRunSubtab('monitor', this)">
+                🤖 Agent Monitor (<span id="run-agent-count">5</span>)
+              </button>
+              <button class="run-subtab-btn" data-subtab="sources" onclick="switchRunSubtab('sources', this)">
+                📚 Source Explorer (<span id="run-source-count">0</span>)
+              </button>
+              <button class="run-subtab-btn" data-subtab="verification" onclick="switchRunSubtab('verification', this)">
+                🔍 Verification Matrix (<span id="run-claim-count">0</span>)
+              </button>
+              <button class="run-subtab-btn" data-subtab="report" onclick="switchRunSubtab('report', this)">
+                📑 Final Report
+              </button>
+            </div>
+          </div>
+
+          <!-- Run Subtab 1: Overview & Metrics -->
+          <div id="rsubtab-overview" class="rsubtab-content active">
+            <div class="metrics-grid">
+              <div class="metric-card">
+                <div class="metric-label">Paper Relevance Coverage</div>
+                <div class="metric-value" id="rmetric-relevance">--%</div>
+                <div class="metric-desc" id="rmetric-relevance-sub">Evaluating scholarly topicality</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Citation Provenance Validity</div>
+                <div class="metric-value" id="rmetric-citations">--%</div>
+                <div class="metric-desc" id="rmetric-citations-sub">Traceable citations in final text</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Claim Verification Support Rate</div>
+                <div class="metric-value" id="rmetric-claims">--%</div>
+                <div class="metric-desc" id="rmetric-claims-sub">Empirically backed assertions</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Peer-Review Classification</div>
+                <div class="metric-value" id="rmetric-peer-review">--%</div>
+                <div class="metric-desc" id="rmetric-peer-review-sub">Peer-reviewed literature proportion</div>
+              </div>
+            </div>
+
+            <!-- Run Saved Configuration & Parameters Card -->
+            <div class="card" style="margin-top:20px;">
+              <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <h3 class="card-title">Run Configuration & Research Parameters</h3>
+                  <div class="card-subtitle">Exact parameter state preserved for this specific inquiry run.</div>
+                </div>
+                <span class="badge badge-neutral" id="run-cfg-status-pill">SAVED CONFIGURATION</span>
+              </div>
+              <div class="run-config-grid">
+                <div class="run-config-item">
+                  <div class="run-config-label">Academic Domain</div>
+                  <div class="run-config-value" id="run-cfg-domain">--</div>
+                </div>
+                <div class="run-config-item">
+                  <div class="run-config-label">Max Source Cap</div>
+                  <div class="run-config-value" id="run-cfg-max-sources">--</div>
+                </div>
+                <div class="run-config-item">
+                  <div class="run-config-label">Queried Repositories</div>
+                  <div class="run-config-value" id="run-cfg-repositories">--</div>
+                </div>
+                <div class="run-config-item">
+                  <div class="run-config-label">Execution Engine & Model</div>
+                  <div class="run-config-value" id="run-cfg-model">--</div>
+                </div>
+                <div class="run-config-item">
+                  <div class="run-config-label">Publication Preference</div>
+                  <div class="run-config-value" id="run-cfg-pub-pref">--</div>
+                </div>
+                <div class="run-config-item">
+                  <div class="run-config-label">Evidence Extraction</div>
+                  <div class="run-config-value" id="run-cfg-evidence-pref">--</div>
+                </div>
+                <div class="run-config-item">
+                  <div class="run-config-label">Min Relevance Cutoff</div>
+                  <div class="run-config-value" id="run-cfg-relevance-cutoff">--</div>
+                </div>
+                <div class="run-config-item">
+                  <div class="run-config-label">Fact-Check Retry Budget</div>
+                  <div class="run-config-value" id="run-cfg-retries">--</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:20px;">
+              <div class="card-header">
+                <h3 class="card-title">Inquiry Executive Summary</h3>
+              </div>
+              <div id="run-executive-summary" class="run-summary-text">
+                Loading inquiry findings summary...
+              </div>
+            </div>
+          </div>
+
+          <!-- Run Subtab 2: Agent Activity Monitor -->
+          <div id="rsubtab-monitor" class="rsubtab-content">
+            <!-- Pipeline Overview Bar -->
+            <div class="agent-pipeline-bar">
+              <div class="pipeline-bar-left">
+                <span class="pipeline-badge">5-Agent Collaborative Pipeline</span>
+                <span class="pipeline-title">Autonomous Scholarly Reasoning & Verification Workflow</span>
+              </div>
+              <div class="pipeline-bar-right" id="agent-pipeline-status">
+                <span class="pipeline-time-pill" id="agent-pipeline-time">Duration: --</span>
+                <span class="badge badge-neutral" id="agent-pipeline-pill">IDLE</span>
+              </div>
+            </div>
+
+            <!-- Agent Cards Grid (5-Stage Visual Workflow) -->
+            <div class="agent-pipeline-grid" id="agent-cards-container">
+              <!-- 1. Planner -->
+              <div id="agent-card-planner" class="agent-card" onclick="selectAgentInspector('planner')">
+                <div class="agent-header">
+                  <div class="agent-title-group">
+                    <span class="agent-icon">🧭</span>
+                    <div>
+                      <div class="agent-name">1. Planner</div>
+                      <div class="agent-role">Decomposition & Strategy</div>
+                    </div>
+                  </div>
+                  <span class="agent-badge" id="badge-agent-planner">PENDING</span>
+                </div>
+                <div class="agent-task-text" id="task-agent-planner">Formulate research sub-queries</div>
+                <div class="agent-meta-capsule" id="meta-agent-planner">
+                  <span class="capsule-item">Awaiting run...</span>
+                </div>
+              </div>
+
+              <!-- 2. Researcher -->
+              <div id="agent-card-researcher" class="agent-card" onclick="selectAgentInspector('researcher')">
+                <div class="agent-header">
+                  <div class="agent-title-group">
+                    <span class="agent-icon">🔬</span>
+                    <div>
+                      <div class="agent-name">2. Researcher</div>
+                      <div class="agent-role">Literature Retrieval & PDFs</div>
+                    </div>
+                  </div>
+                  <span class="agent-badge" id="badge-agent-researcher">PENDING</span>
+                </div>
+                <div class="agent-task-text" id="task-agent-researcher">Query OpenAlex & arXiv repositories</div>
+                <div class="agent-meta-capsule" id="meta-agent-researcher">
+                  <span class="capsule-item">Awaiting run...</span>
+                </div>
+              </div>
+
+              <!-- 3. Analyst -->
+              <div id="agent-card-analyst" class="agent-card" onclick="selectAgentInspector('analyst')">
+                <div class="agent-header">
+                  <div class="agent-title-group">
+                    <span class="agent-icon">🧠</span>
+                    <div>
+                      <div class="agent-name">3. Analyst</div>
+                      <div class="agent-role">Passage Synthesis & Claims</div>
+                    </div>
+                  </div>
+                  <span class="agent-badge" id="badge-agent-analyst">PENDING</span>
+                </div>
+                <div class="agent-task-text" id="task-agent-analyst">Extract atomic verifiable claims</div>
+                <div class="agent-meta-capsule" id="meta-agent-analyst">
+                  <span class="capsule-item">Awaiting run...</span>
+                </div>
+              </div>
+
+              <!-- 4. Fact-Checker -->
+              <div id="agent-card-fact_checker" class="agent-card" onclick="selectAgentInspector('fact_checker')">
+                <div class="agent-header">
+                  <div class="agent-title-group">
+                    <span class="agent-icon">⚖️</span>
+                    <div>
+                      <div class="agent-name">4. Fact-Checker</div>
+                      <div class="agent-role">Adversarial Ground Audit</div>
+                    </div>
+                  </div>
+                  <span class="agent-badge" id="badge-agent-fact_checker">PENDING</span>
+                </div>
+                <div class="agent-task-text" id="task-agent-fact_checker">Audit claims & verify citations</div>
+                <div class="agent-meta-capsule" id="meta-agent-fact_checker">
+                  <span class="capsule-item">Awaiting run...</span>
+                </div>
+              </div>
+
+              <!-- 5. Report Writer -->
+              <div id="agent-card-report_writer" class="agent-card" onclick="selectAgentInspector('report_writer')">
+                <div class="agent-header">
+                  <div class="agent-title-group">
+                    <span class="agent-icon">📑</span>
+                    <div>
+                      <div class="agent-name">5. Report Writer</div>
+                      <div class="agent-role">Quality-Gated Synthesis</div>
+                    </div>
+                  </div>
+                  <span class="agent-badge" id="badge-agent-report_writer">PENDING</span>
+                </div>
+                <div class="agent-task-text" id="task-agent-report_writer">Compile quality-gated report</div>
+                <div class="agent-meta-capsule" id="meta-agent-report_writer">
+                  <span class="capsule-item">Awaiting run...</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Agent Activity & Inspector Dual Section -->
+            <div class="card agent-inspector-card">
+              <div class="agent-inspector-header">
+                <div class="inspector-tabs">
+                  <button type="button" class="inspector-tab-btn active" id="tab-btn-terminal" onclick="switchInspectorTab('terminal')">
+                    📟 Live Event Stream & Audit Log
+                  </button>
+                  <button type="button" class="inspector-tab-btn" id="tab-btn-telemetry" onclick="switchInspectorTab('telemetry')">
+                    🔍 Agent Task Payloads & Telemetry
+                  </button>
+                </div>
+                <div class="inspector-actions">
+                  <span class="stream-live-indicator" id="terminal-live-indicator">● Stream Active</span>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="copyTerminalLogs()">📋 Copy Logs</button>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="clearTerminalLogs()">🧹 Clear</button>
+                </div>
+              </div>
+
+              <!-- View A: Terminal Log Stream -->
+              <div id="inspector-view-terminal" class="inspector-view-content active">
+                <div class="terminal-box" id="terminal-logs">
+                  <div class="log-entry">
+                    <span class="log-time">[System]</span>
+                    <span>Agent activity stream ready.</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- View B: Agent Output Telemetry & Payloads Inspector -->
+              <div id="inspector-view-telemetry" class="inspector-view-content" style="display:none;">
+                <div class="telemetry-agent-nav" id="telemetry-agent-tabs">
+                  <button class="telemetry-pill active" id="pill-agent-planner" onclick="showAgentPayload('planner')">🧭 1. Planner</button>
+                  <button class="telemetry-pill" id="pill-agent-researcher" onclick="showAgentPayload('researcher')">🔬 2. Researcher</button>
+                  <button class="telemetry-pill" id="pill-agent-analyst" onclick="showAgentPayload('analyst')">🧠 3. Analyst</button>
+                  <button class="telemetry-pill" id="pill-agent-fact_checker" onclick="showAgentPayload('fact_checker')">⚖️ 4. Fact-Checker</button>
+                  <button class="telemetry-pill" id="pill-agent-report_writer" onclick="showAgentPayload('report_writer')">📑 5. Report Writer</button>
+                </div>
+                <div class="telemetry-display-box" id="telemetry-content-box">
+                  <div class="empty-state">Select an agent above to inspect its task payload and intermediate outputs.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Run Subtab 3: Source Explorer -->
+          <div id="rsubtab-sources" class="rsubtab-content">
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">Retrieved Scholarly Literature & Provenance</div>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th style="width:40px;">#</th>
+                      <th style="min-width:260px;">Title & Authors</th>
+                      <th style="min-width:110px;">Venue & Year</th>
+                      <th style="min-width:140px;">Relevance Score</th>
+                      <th style="min-width:140px;">Peer Review Status</th>
+                      <th style="min-width:110px;">Access Level</th>
+                      <th style="min-width:100px;">Canonical Link</th>
+                    </tr>
+                  </thead>
+                  <tbody id="sources-table-body">
+                    <tr>
+                      <td colspan="7" class="empty-state">No sources loaded for this inquiry.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Run Subtab 4: Verification Matrix -->
+          <div id="rsubtab-verification" class="rsubtab-content">
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <div class="card-title">Factual Claim Verification Matrix</div>
+                  <div class="card-subtitle">Every claim audited independently against indexed evidence passages with contradiction checks.</div>
+                </div>
+              </div>
+              <div id="claims-container">
+                <div class="empty-state">No claims verified for this inquiry.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Run Subtab 5: Final Report -->
+          <div id="rsubtab-report" class="rsubtab-content">
+            <div class="report-meta-card" id="report-meta-box" style="display:none;"></div>
+            <div id="report-view-container">
+              <div class="empty-state">Loading report...</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ======================================================== -->
+        <!-- VIEW 4: SYNTHESIS VIEWER                                -->
+        <!-- ======================================================== -->
+        <section id="view-synthesis" class="view-panel">
+          <div class="synthesis-header-card">
+            <div class="synthesis-header-top">
+              <a class="back-link" onclick="backToWorkspace()">&larr; Back to Project Workspace</a>
+              <div class="synthesis-header-actions">
+                <a class="btn btn-secondary btn-sm" id="btn-synth-export-md" href="#" target="_blank">Export Markdown</a>
+                <a class="btn btn-primary btn-sm" id="btn-synth-export-html" href="#" target="_blank">Export HTML</a>
+                <button class="btn btn-danger btn-sm" onclick="deleteActiveSynthesis()">Delete Synthesis</button>
+              </div>
+            </div>
+            <h1 class="synthesis-heading" id="synthesis-title-heading">Research Synthesis</h1>
+            <div class="synthesis-meta-line" id="synthesis-meta-display">
+              Loading metadata...
+            </div>
+          </div>
+
+          <div class="synthesis-paper" id="synthesis-content-container">
+            <div class="empty-state">Loading synthesized review...</div>
+          </div>
+        </section>
+
+        <!-- ======================================================== -->
+        <!-- VIEW 5: EVALUATION & BENCHMARKS                         -->
+        <!-- ======================================================== -->
+        <section id="view-benchmarks" class="view-panel">
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Automated Benchmark Evaluation Suite</div>
+                <div class="card-subtitle">20-Question multidisciplinary academic benchmark comparing 5-Agent Collaborative vs Single-Agent Baseline.</div>
+              </div>
+            </div>
+
+            <div class="grid-2" style="margin-bottom:20px;">
+              <div class="form-group">
+                <label class="form-label" for="benchmark-question-select">Select Evaluation Benchmark Question</label>
+                <select id="benchmark-question-select" class="form-control">
+                  <option value="">-- Choose Benchmark Question --</option>
+                </select>
+              </div>
+              <div style="display:flex; align-items:flex-end;">
+                <button id="btn-run-benchmark" class="btn btn-primary" onclick="runBenchmarkTest()" style="width:100%;">
+                  Run Benchmark Test
+                </button>
+              </div>
+            </div>
+
+            <div class="card-title" style="font-size:0.95rem; margin-bottom:12px;">Empirical Benchmark Results</div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Question ID</th>
+                    <th>Architecture</th>
+                    <th>Relevance</th>
+                    <th>Coverage</th>
+                    <th>Claim Support</th>
+                    <th>Citation Correctness</th>
+                    <th>Runtime</th>
+                  </tr>
+                </thead>
+                <tbody id="benchmarks-body">
+                  <tr>
+                    <td colspan="7" class="empty-state">No benchmark runs recorded.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
   </div>
 
-  <script src="/static/js/app.js"></script>
+  <!-- ============================================================ -->
+  <!-- MODALS                                                       -->
+  <!-- ============================================================ -->
+
+  <!-- Modal 1: Create Project Modal -->
+  <div class="modal-backdrop" id="modal-create-project" style="display:none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title">Create Research Project Workspace</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-create-project')">&times;</button>
+      </div>
+      <form id="form-create-project" onsubmit="handleCreateProjectSubmit(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="new-project-title">Project Name <span class="required">*</span></label>
+            <input type="text" id="new-project-title" class="form-control" placeholder="e.g. Retrieval-Augmented Generation Investigation" required minlength="3" maxlength="200">
+            <div class="field-hint">A concise name for this research workspace. You can edit this anytime.</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="new-project-desc">Research Objective / Scope (Optional)</label>
+            <textarea id="new-project-desc" class="form-control" rows="3" placeholder="e.g. Benchmarking RAG against fine-tuning for domain-specific question answering across accuracy, latency, and cost." maxlength="1000"></textarea>
+          </div>
+
+          <div class="starter-suggestions">
+            <div class="suggestion-label">Suggested Templates:</div>
+            <div class="suggestion-tags">
+              <button type="button" class="sugg-tag" onclick="fillProjectTemplate('RAG vs Fine-Tuning Benchmarking', 'Comparative study on factual accuracy, latency, knowledge freshness, and compute cost.')">RAG vs Fine-Tuning</button>
+              <button type="button" class="sugg-tag" onclick="fillProjectTemplate('CRISPR Off-Target Effects Analysis', 'Evaluating machine learning methods for predicting off-target cleavage sites in human cells.')">CRISPR ML Models</button>
+              <button type="button" class="sugg-tag" onclick="fillProjectTemplate('Post-Quantum Cryptography Migration', 'Analyzing lattice-based algorithm performance, memory requirements, and NIST standards.')">Post-Quantum Cryptography</button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-create-project')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-create-project">Create Workspace</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 2: Edit Project Modal -->
+  <div class="modal-backdrop" id="modal-edit-project" style="display:none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title">Edit Project Details</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-edit-project')">&times;</button>
+      </div>
+      <form id="form-edit-project" onsubmit="handleEditProjectSubmit(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="edit-project-title">Project Name <span class="required">*</span></label>
+            <input type="text" id="edit-project-title" class="form-control" required minlength="2" maxlength="200">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="edit-project-desc">Description</label>
+            <textarea id="edit-project-desc" class="form-control" rows="3" maxlength="1000"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-edit-project')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 3: Delete Project Confirmation Modal -->
+  <div class="modal-backdrop" id="modal-delete-project" style="display:none;">
+    <div class="modal-dialog modal-danger">
+      <div class="modal-header">
+        <h3 class="modal-title">Confirm Project Deletion</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-delete-project')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="color:var(--text-primary); margin-bottom:12px;">
+          Are you sure you want to permanently delete the workspace <strong id="delete-project-name"></strong>?
+        </p>
+        <div class="danger-disclosure-box" id="delete-disclosure-box">
+          Loading dependent records...
+        </div>
+        <p style="font-size:0.8rem; color:var(--status-error); margin-top:12px;">
+          ⚠️ This action cannot be undone. All research inquiries, verified evidence passages, claims, and reports in this project will be deleted.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-delete-project')">Cancel</button>
+        <button type="button" class="btn btn-danger" id="btn-confirm-delete-project" onclick="executeDeleteProject()">Permanently Delete Project</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 4: New Research Run Modal -->
+  <div class="modal-backdrop" id="modal-new-run" style="display:none;">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">New Research Run</h3>
+          <div class="modal-subtitle">Configure and execute an autonomous multi-agent academic inquiry.</div>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal('modal-new-run')">&times;</button>
+      </div>
+      <form id="form-new-run" onsubmit="handleNewRunSubmit(event)">
+        <div class="modal-body">
+          <!-- Inline Form Validation Error Banner -->
+          <div id="run-form-error" class="form-error-banner" style="display:none;">
+            <span>⚠️</span>
+            <span id="run-form-error-msg">Please review the form errors before proceeding.</span>
+          </div>
+
+          <!-- Target Workspace (Required & Preselected) -->
+          <div class="form-group">
+            <label class="form-label">Target Project Workspace <span class="required">*</span></label>
+            <div class="target-workspace-pill">
+              <span class="icon">📁</span>
+              <span id="modal-run-project-display">Loading Project Workspace...</span>
+            </div>
+            <div class="field-hint">This inquiry run and its evidence trail will be permanently associated with this workspace.</div>
+          </div>
+
+          <!-- Research Question (Required) -->
+          <div class="form-group">
+            <label class="form-label" for="run-form-question">Research Question / Academic Query <span class="required">*</span></label>
+            <textarea id="run-form-question" class="form-control" rows="3" placeholder="Enter an in-depth scholarly inquiry, e.g. Compare retrieval-augmented generation (RAG) and fine-tuning for domain-specific question answering, focusing on factual accuracy, knowledge freshness, computational cost, and limitations." required minlength="5" maxlength="1000"></textarea>
+            <div class="field-hint">Formulate an in-depth scholarly inquiry. The five agents will decompose it into subquestions, harvest empirical literature, extract atomic claims, and verify evidence.</div>
+          </div>
+
+          <div class="starter-suggestions">
+            <div class="suggestion-label">Suggested Academic Questions:</div>
+            <div class="suggestion-tags">
+              <button type="button" class="sugg-tag" onclick="fillQuestion('What is retrieval-augmented generation (RAG) and how does it reduce hallucination in large language models?')">What is RAG?</button>
+              <button type="button" class="sugg-tag" onclick="fillQuestion('How does retrieval-augmented generation compare with fine-tuning for domain question answering across accuracy, latency, and cost?')">RAG vs Fine-Tuning</button>
+              <button type="button" class="sugg-tag" onclick="fillQuestion('What are the empirical limitations and failure modes of retrieval-augmented generation systems in production?')">RAG Limitations</button>
+              <button type="button" class="sugg-tag" onclick="fillQuestion('How is retrieval-augmented generation evaluated for faithfulness, context relevance, and retrieval recall?')">RAG Evaluation</button>
+            </div>
+          </div>
+
+          <!-- Research Configuration Section -->
+          <div class="grid-2" style="margin-top:16px;">
+            <!-- Academic Domain -->
+            <div class="form-group">
+              <label class="form-label" for="run-form-domain">Academic Domain / Field <span class="required">*</span></label>
+              <select id="run-form-domain" class="form-control" onchange="handleDomainChange()">
+                <option value="Computer Science & AI" selected>Computer Science & AI</option>
+                <option value="Medicine & Health Sciences">Medicine & Health Sciences</option>
+                <option value="Bioinformatics & Genomics">Bioinformatics & Genomics</option>
+                <option value="Physics & Materials Science">Physics & Materials Science</option>
+                <option value="Economics & Social Sciences">Economics & Social Sciences</option>
+                <option value="Interdisciplinary Studies">Interdisciplinary Studies</option>
+                <option value="CUSTOM">Custom Domain / Other...</option>
+              </select>
+              <input type="text" id="run-form-custom-domain" class="form-control" style="display:none; margin-top:8px;" placeholder="Enter custom academic field (e.g. Quantum Computing, Climate Science)" maxlength="100">
+              <div class="field-hint">Helps the agents interpret terminology and formulate specialized query terms in the appropriate subject area.</div>
+            </div>
+
+            <!-- Maximum Source Retrieval Cap -->
+            <div class="form-group">
+              <label class="form-label" for="run-form-max-sources">Maximum Source Retrieval Cap <span class="required">*</span></label>
+              <input type="number" id="run-form-max-sources" class="form-control" value="8" min="2" max="30" required>
+              <div class="field-hint">Maximum number of unique scholarly sources to harvest (default 8). Validated range: 2 to 30. (Not a guarantee that this many matching papers exist).</div>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <!-- Scholarly Repositories -->
+            <div class="form-group">
+              <label class="form-label">Scholarly Repositories <span class="required">*</span></label>
+              <div class="checkbox-row" style="margin-top:6px; display:flex; flex-direction:column; gap:8px;">
+                <label class="checkbox-label" title="Global scholarly index for peer-reviewed literature">
+                  <input type="checkbox" id="run-source-openalex" checked>
+                  <span><strong>OpenAlex:</strong> Global index of peer-reviewed journal articles, conference papers, and citation graphs.</span>
+                </label>
+                <label class="checkbox-label" title="Preprint archive for cutting-edge findings">
+                  <input type="checkbox" id="run-source-arxiv" checked>
+                  <span><strong>arXiv:</strong> Open-access archive for physics, mathematics, computer science, and quantitative biology preprints.</span>
+                </label>
+              </div>
+              <div class="field-hint">Determines which external scholarly indexes are queried. At least one repository must be selected.</div>
+            </div>
+
+            <!-- Publication Preference -->
+            <div class="form-group">
+              <label class="form-label" for="run-form-pub-pref">Publication Preference</label>
+              <select id="run-form-pub-pref" class="form-control">
+                <option value="all" selected>Both Peer-Reviewed & Preprints (Comprehensive)</option>
+                <option value="peer_reviewed_only">Peer-Reviewed Publications Only (Strict)</option>
+                <option value="preprints_preferred">Preprints Preferred (Cutting-Edge)</option>
+              </select>
+              <div class="field-hint">Filters or ranks literature by formal publication status. Peer-reviewed only filters out non-peer-reviewed preprints.</div>
+            </div>
+          </div>
+
+          <!-- Execution Mode -->
+          <div class="form-group">
+            <label class="form-label" for="run-form-mode">Research Execution Mode / Model <span class="required">*</span></label>
+            <select id="run-form-mode" class="form-control">
+              <option value="ollama" selected>Local Ollama AI (qwen2.5:3b) &mdash; Live Inference</option>
+              <option value="demo">Deterministic Demo Engine &mdash; Offline Benchmark Data</option>
+            </select>
+            <div class="field-hint">Identifies which model processes the research. Local Ollama executes live five-agent reasoning on your local GPU/CPU. Demo mode uses bundled deterministic benchmark data for reproducible evaluations.</div>
+          </div>
+
+          <!-- Progressive Disclosure for Advanced Settings -->
+          <div class="advanced-section">
+            <button type="button" class="advanced-toggle" onclick="toggleAdvancedSettings()">
+              <span id="adv-arrow">▶</span> Advanced Research Parameters
+            </button>
+            <div id="adv-settings-box" class="advanced-box" style="display:none;">
+              <div class="grid-3">
+                <div class="form-group">
+                  <label class="form-label" for="run-adv-evidence-pref">Evidence Extraction Mode</label>
+                  <select id="run-adv-evidence-pref" class="form-control">
+                    <option value="full_text_preferred" selected>Full-Text PDF Inspection (Abstract Fallback)</option>
+                    <option value="abstract_only">Abstract-Only Extraction (Faster)</option>
+                    <option value="full_text_required">Full-Text PDF Required (Strict)</option>
+                  </select>
+                  <div class="field-hint">PyMuPDF deep inspection parses page-level text. Abstract mode bypasses PDF downloads.</div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="run-adv-relevance-cutoff">Min Relevance Cutoff (%)</label>
+                  <input type="number" id="run-adv-relevance-cutoff" class="form-control" value="50" min="10" max="95" step="5">
+                  <div class="field-hint">Papers scoring below this threshold during relevance evaluation are excluded from claim extraction.</div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="run-adv-retries">Fact-Checking Max Retries</label>
+                  <input type="number" id="run-adv-retries" class="form-control" value="2" min="0" max="5">
+                  <div class="field-hint">Maximum targeted retrieval cycles allowed if unsupported claims are detected.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-new-run')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-new-run">
+            <span class="btn-icon">⚡</span> Start Research Run
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 5: Create Research Synthesis Modal -->
+  <div class="modal-backdrop" id="modal-create-synthesis" style="display:none;">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">Create Research Synthesis</h3>
+          <div class="modal-subtitle">Synthesize findings across completed inquiries into a cohesive meta-review.</div>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal('modal-create-synthesis')">&times;</button>
+      </div>
+      <form id="form-create-synthesis" onsubmit="handleCreateSynthesisSubmit(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="synth-title">Synthesis Title (Optional)</label>
+            <input type="text" id="synth-title" class="form-control" placeholder="e.g. Synthesized Review: RAG Architecture Mechanics and Empirical Limitations">
+            <div class="field-hint">Leave blank to automatically name after the workspace and contributing inquiries.</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Select Contributing Inquiries (Minimum 2 required) <span class="required">*</span></label>
+            <div class="runs-select-list" id="synthesis-runs-checklist">
+              <div class="loading-state">Loading eligible runs...</div>
+            </div>
+          </div>
+
+          <div class="info-callout">
+            <strong>ℹ️ Provenance Guarantee:</strong> Synthesizing inquiries creates a new independent document. It will NOT overwrite any of your original run reports. Source citations will be de-duplicated and cross-run contradictions will be highlighted.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('modal-create-synthesis')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-synthesis">
+            <span class="btn-icon">🧬</span> Generate Synthesis
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 6: Delete Research Run Confirmation Modal -->
+  <div class="modal-backdrop" id="modal-delete-run" style="display:none;">
+    <div class="modal-dialog modal-danger">
+      <div class="modal-header">
+        <h3 class="modal-title">Delete Research Run</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-delete-run')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="color:var(--text-primary); margin-bottom:12px;">
+          Are you sure you want to permanently delete this research inquiry?
+        </p>
+        <div class="danger-disclosure-box">
+          <div style="font-weight:600; color:var(--text-primary); margin-bottom:6px;" id="delete-run-question-display">Loading question...</div>
+          <div style="font-size:0.78rem; color:var(--text-muted); font-family:var(--font-mono);" id="delete-run-id-display">--</div>
+        </div>
+        <p style="font-size:0.82rem; color:var(--status-error); margin-top:12px;">
+          ⚠️ This action cannot be undone. The generated report, extracted atomic claims, verification audit records, and run-specific literature will be permanently deleted from this workspace.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-delete-run')">Cancel</button>
+        <button type="button" class="btn btn-danger" id="btn-confirm-delete-run" onclick="executeDeleteRun()">Permanently Delete Run</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js?v=2.4"></script>
 </body>
 </html>

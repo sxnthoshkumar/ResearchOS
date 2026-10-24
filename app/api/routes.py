@@ -21,6 +21,7 @@ from app.database.repositories import (
     ReportRepository,
     RunRepository,
     SourceRepository,
+    SynthesisRepository,
     TaskRepository,
     VerificationRepository,
 )
@@ -33,6 +34,7 @@ from app.evaluation.metrics import (
 )
 from app.orchestration.events import broadcaster
 from app.orchestration.workflow import orchestrator
+from app.research.synthesis import SynthesisEngine
 
 router = APIRouter(prefix="/api")
 
@@ -44,11 +46,27 @@ class CreateProjectRequest(BaseModel):
     description: Optional[str] = Field(None, max_length=1000)
 
 
+class UpdateProjectRequest(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = Field(None, max_length=1000)
+    status: Optional[str] = Field(None, pattern="^(ACTIVE|ARCHIVED)$")
+
+
 class StartRunRequest(BaseModel):
-    question: str = Field(..., min_length=10, max_length=1000)
-    provider_mode: Optional[str] = None  # 'demo', 'openai', or None for system default
+    question: str = Field(..., min_length=5, max_length=1000)
+    domain: Optional[str] = Field(default="Computer Science & AI", max_length=100)
+    provider_mode: Optional[str] = None  # 'ollama', 'demo', or None for system default
     search_providers: Optional[List[str]] = Field(default_factory=lambda: ["openalex", "arxiv"])
     max_sources: int = Field(default=8, ge=2, le=30)
+    publication_preference: Optional[str] = Field(default="all", pattern="^(all|peer_reviewed_only|preprints_preferred)$")
+    evidence_preference: Optional[str] = Field(default="full_text_preferred", pattern="^(full_text_preferred|abstract_only|full_text_required)$")
+    relevance_threshold: Optional[float] = Field(default=50.0, ge=0.0, le=100.0)
+    max_retries: Optional[int] = Field(default=2, ge=0, le=5)
+
+
+class CreateSynthesisRequest(BaseModel):
+    run_ids: List[str] = Field(..., min_items=2)
+    title: Optional[str] = Field(None, max_length=200)
 
 
 class RunBenchmarkRequest(BaseModel):
@@ -86,11 +104,11 @@ async def get_ollama_health() -> Dict[str, Any]:
     return await provider.check_health()
 
 
-# --- Projects ---
+# --- Projects Workspace ---
 
 @router.get("/projects")
-def list_projects() -> List[Dict[str, Any]]:
-    return ProjectRepository.list_all()
+def list_projects(include_archived: bool = True) -> List[Dict[str, Any]]:
+    return ProjectRepository.list_all(include_archived=include_archived)
 
 
 @router.post("/projects")
@@ -104,16 +122,125 @@ def get_project(project_id: str) -> Dict[str, Any]:
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
     runs = RunRepository.list_by_project(project_id)
+    syntheses = SynthesisRepository.list_by_project(project_id)
+    stats = ProjectRepository.get_stats(project_id)
     p["runs"] = runs
+    p["syntheses"] = syntheses
+    p["stats"] = stats
     return p
+
+
+@router.put("/projects/{project_id}")
+def update_project(project_id: str, req: UpdateProjectRequest) -> Dict[str, Any]:
+    p = ProjectRepository.get(project_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Project not found")
+    updated = ProjectRepository.update(
+        project_id=project_id,
+        title=req.title,
+        description=req.description,
+        status=req.status,
+    )
+    return updated or {}
+
+
+@router.post("/projects/{project_id}/archive")
+def archive_project(project_id: str) -> Dict[str, Any]:
+    p = ProjectRepository.get(project_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Project not found")
+    res = ProjectRepository.archive(project_id)
+    return res or {}
+
+
+@router.post("/projects/{project_id}/restore")
+def restore_project(project_id: str) -> Dict[str, Any]:
+    p = ProjectRepository.get(project_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Project not found")
+    res = ProjectRepository.restore(project_id)
+    return res or {}
+
+
+@router.get("/projects/{project_id}/sources")
+def get_project_sources(project_id: str) -> List[Dict[str, Any]]:
+    p = ProjectRepository.get(project_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return SourceRepository.list_by_project(project_id)
+
+
+@router.get("/projects/{project_id}/syntheses")
+def list_project_syntheses(project_id: str) -> List[Dict[str, Any]]:
+    p = ProjectRepository.get(project_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return SynthesisRepository.list_by_project(project_id)
+
+
+@router.post("/projects/{project_id}/synthesis")
+def create_project_synthesis(project_id: str, req: CreateSynthesisRequest) -> Dict[str, Any]:
+    try:
+        synthesis = SynthesisEngine.create_synthesis(
+            project_id=project_id,
+            run_ids=req.run_ids,
+            custom_title=req.title,
+        )
+        return synthesis
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Failed to create synthesis: %s", e)
+        raise HTTPException(status_code=500, detail=f"Synthesis error: {str(e)}")
+
+
+@router.get("/syntheses/{synthesis_id}")
+def get_synthesis(synthesis_id: str) -> Dict[str, Any]:
+    s = SynthesisRepository.get(synthesis_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Synthesis not found")
+    return s
+
+
+@router.delete("/syntheses/{synthesis_id}")
+def delete_synthesis(synthesis_id: str) -> Dict[str, Any]:
+    success = SynthesisRepository.delete(synthesis_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Synthesis not found or already deleted")
+    return {"status": "deleted", "synthesis_id": synthesis_id}
+
+
+@router.get("/syntheses/{synthesis_id}/export/markdown")
+def export_synthesis_markdown(synthesis_id: str) -> PlainTextResponse:
+    s = SynthesisRepository.get(synthesis_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Synthesis not found")
+    filename = f"research_synthesis_{synthesis_id[:8]}.md"
+    return PlainTextResponse(
+        s["markdown_content"],
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/syntheses/{synthesis_id}/export/html")
+def export_synthesis_html(synthesis_id: str) -> HTMLResponse:
+    s = SynthesisRepository.get(synthesis_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Synthesis not found")
+    filename = f"research_synthesis_{synthesis_id[:8]}.html"
+    return HTMLResponse(
+        s["html_content"],
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @router.delete("/projects/{project_id}")
 def delete_project(project_id: str) -> Dict[str, Any]:
-    success = ProjectRepository.delete(project_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Project not found or already deleted")
-    return {"status": "deleted", "project_id": project_id}
+    p = ProjectRepository.get(project_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Project not found")
+    res = ProjectRepository.delete_with_details(project_id)
+    return res
 
 
 # --- Research Runs & Execution ---
@@ -126,18 +253,26 @@ async def start_research_run(
     if not p:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    if not req.search_providers or len(req.search_providers) == 0:
+        raise HTTPException(status_code=400, detail="At least one scholarly repository (OpenAlex or arXiv) must be selected.")
+
     provider_mode = req.provider_mode if req.provider_mode else "live"
-    providers_str = ",".join(req.search_providers) if req.search_providers else "openalex,arxiv"
+    providers_str = ",".join(req.search_providers)
 
     active_model = settings.get_active_model_name() if provider_mode != "demo" else "demo-deterministic-engine"
 
     run = RunRepository.create(
         project_id=project_id,
         question=req.question,
+        domain=req.domain or "Computer Science & AI",
         provider_mode=provider_mode,
         model_name=active_model,
         search_providers=providers_str,
         max_sources=req.max_sources,
+        publication_preference=req.publication_preference or "all",
+        evidence_preference=req.evidence_preference or "full_text_preferred",
+        relevance_threshold=req.relevance_threshold if req.relevance_threshold is not None else 50.0,
+        max_retries=req.max_retries if req.max_retries is not None else 2,
     )
 
     # Launch orchestrator in background task
@@ -183,6 +318,25 @@ def cancel_run(run_id: str) -> Dict[str, Any]:
     if not success:
         raise HTTPException(status_code=400, detail="Run cannot be cancelled or is already finished")
     return {"status": "cancelling", "run_id": run_id}
+
+
+@router.delete("/runs/{run_id}")
+def delete_run(run_id: str) -> Dict[str, Any]:
+    run = RunRepository.get(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    if run.get("status") in ("PLANNING", "RESEARCHING", "ANALYZING", "VERIFYING", "GENERATING_REPORT", "RETRYING"):
+        try:
+            orchestrator.cancel_run(run_id)
+        except Exception:
+            pass
+
+    project_id = run["project_id"]
+    success = RunRepository.delete(run_id)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to delete run records")
+    return {"status": "deleted", "run_id": run_id, "project_id": project_id}
 
 
 @router.get("/runs/{run_id}/events")

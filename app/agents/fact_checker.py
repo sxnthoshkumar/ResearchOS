@@ -211,6 +211,26 @@ class FactCheckingAgent:
         # -------------------------------------------------------------
         # 1. Deterministic Checks
         # -------------------------------------------------------------
+        # Check for empty or whitespace-only claim
+        if not claim_text or not claim_text.strip():
+            return ClaimAuditRecord(
+                claim_id=claim_id,
+                claim_text=claim_text or "",
+                source_ids=source_ids,
+                passage_ids=passage_ids,
+                exact_supporting_excerpts=[],
+                verification_status="INSUFFICIENT_EVIDENCE",
+                verdict="NOT_CHECKABLE",
+                explanation="Claim text is empty or missing; cannot evaluate evidentiary support.",
+                rationale="Claim text is empty or missing; cannot evaluate evidentiary support.",
+                contradicting_evidence=None,
+                contradiction_found=False,
+                verification_method="deterministic_input_validation",
+                confidence=0.0,
+                support_score=0.0,
+                is_direct_quote=False,
+            )
+
         if not ev_list or not passage_ids:
             return ClaimAuditRecord(
                 claim_id=claim_id,
@@ -422,20 +442,59 @@ class FactCheckingAgent:
         explanation = str(llm_data.get("explanation", "Evaluated against stored evidence passages."))
         contra_ev = llm_data.get("contradicting_evidence")
         if contra_ev:
-            contra_ev = str(contra_ev).strip()
-            if status != "CONTRADICTED" and len(contra_ev) > 10:
-                status = "CONTRADICTED"
+            c_str = str(contra_ev).strip()
+            if c_str.lower() in ("null", "none", "n/a", "no", "false", "none recorded", "not assessed", ""):
+                contra_ev = None
+            else:
+                contra_ev = c_str
+                if status != "CONTRADICTED" and len(contra_ev) > 10:
+                    status = "CONTRADICTED"
+        else:
+            contra_ev = None
 
         contra_found = bool(status == "CONTRADICTED" or contra_ev)
-        conf = float(llm_data.get("confidence", 0.80 if status == "SUPPORTED" else 0.50))
-        conf = max(0.0, min(1.0, conf))
+
+        # Heuristic Evidentiary Confidence Estimation:
+        # Note: These values are rule-bounded heuristic assessments of evidence support strength,
+        # NOT statistically calibrated posterior probabilities.
+        raw_conf: Optional[float] = None
+        if "confidence" in llm_data and llm_data["confidence"] is not None:
+            try:
+                raw_conf = float(llm_data["confidence"])
+            except (ValueError, TypeError):
+                raw_conf = None
 
         excerpts = [str(x).strip() for x in llm_data.get("exact_supporting_excerpts", []) if x]
 
-        # Requirement 7: If the model cannot provide a defensible explanation, use INSUFFICIENT_EVIDENCE
+        # Requirement: If the model claims SUPPORTED but produces no supporting excerpts, downgrade
+        if status == "SUPPORTED" and not excerpts:
+            status = "PARTIALLY_SUPPORTED"
+            explanation += " (Downgraded to PARTIALLY_SUPPORTED: no verbatim supporting excerpt was isolated from evidence passages.)"
+
+        # Requirement: If the model cannot provide a defensible explanation, use INSUFFICIENT_EVIDENCE
         if len(explanation.strip()) < 15 and status == "SUPPORTED":
             status = "INSUFFICIENT_EVIDENCE"
             explanation = "Insufficient explanatory justification provided by auditor model; conservative downgrade."
+
+        # Strictly bound heuristic confidence based on the confirmed verification status
+        if status == "SUPPORTED":
+            base = raw_conf if raw_conf is not None else (0.90 if is_direct_quote else 0.80)
+            conf = min(0.95, max(0.65, base))
+        elif status == "PARTIALLY_SUPPORTED":
+            base = raw_conf if raw_conf is not None else 0.50
+            # Partially supported claims can NEVER exceed 0.60
+            conf = min(0.60, max(0.35, base if base <= 0.60 else 0.50))
+        elif status == "CONTRADICTED":
+            # Contradicted claims have zero evidentiary support
+            conf = 0.0
+        elif status == "INSUFFICIENT_EVIDENCE":
+            # Insufficient evidence claims have minimal or zero evidentiary support (never high confidence)
+            base = raw_conf if raw_conf is not None else 0.10
+            conf = min(0.15, max(0.0, base if base <= 0.15 else 0.10))
+        else:  # INVALID_CITATION or other
+            conf = 0.0
+
+        conf = round(conf, 2)
 
         return ClaimAuditRecord(
             claim_id=claim_id,
@@ -483,19 +542,19 @@ class FactCheckingAgent:
         if is_direct_quote and overlap > 0.8:
             status = "SUPPORTED"
             explanation = "Direct verbatim quotation corroborates claim text in evidence passage."
-            confidence = 0.90
+            confidence = 0.85
         elif overlap > 0.6 and not has_negation:
             status = "PARTIALLY_SUPPORTED"
             explanation = "Substantial conceptual alignment observed; deeper semantic entailment requires manual review."
-            confidence = 0.65
+            confidence = 0.50
         elif has_negation and overlap > 0.4:
             status = "CONTRADICTED"
             explanation = "Passage contains explicit qualifying or negating terms that challenge the factual claim."
-            confidence = 0.70
+            confidence = 0.0
         else:
             status = "INSUFFICIENT_EVIDENCE"
             explanation = "Evidence text is insufficient or conceptually distant from the asserted claim."
-            confidence = 0.40
+            confidence = 0.10
 
         # Extract matching excerpt
         excerpts = []

@@ -82,14 +82,26 @@ def calculate_relevance_metrics(
     """
     Calculates paper relevance evaluation coverage and decision distribution.
 
-    Definitions:
-    - coverage: evaluated sources / total retrieved sources
-    - pct_included: included sources / evaluated sources
-    - pct_reviewed: reviewed sources / evaluated sources
-    - pct_excluded: excluded sources / evaluated sources
-    - avg_relevance_score: sum of relevance scores / evaluated sources
+    Mathematical Definitions:
+    - Relevance Coverage:
+        Numerator: Count of unique eligible source_ids with completed relevance assessments.
+        Denominator: Total eligible sources retrieved for the research run (total_sources).
+        Formula: unique_evaluated_sources / total_sources
+        Bounds: [0.0, 1.0] (0% - 100%)
+    - Inclusion Rate (pct_included):
+        Numerator: Evaluated sources with decision == 'INCLUDE'.
+        Denominator: Total unique evaluated sources.
+    - Review Rate (pct_reviewed):
+        Numerator: Evaluated sources with decision == 'REVIEW'.
+        Denominator: Total unique evaluated sources.
+    - Exclusion Rate (pct_excluded):
+        Numerator: Evaluated sources with decision == 'EXCLUDE'.
+        Denominator: Total unique evaluated sources.
+    - Average Relevance Score:
+        Numerator: Sum of composite relevance scores of unique evaluated sources.
+        Denominator: Total unique evaluated sources.
     """
-    if not total_sources:
+    if not total_sources or total_sources <= 0:
         return {
             "coverage": 0.0,
             "pct_included": 0.0,
@@ -101,10 +113,19 @@ def calculate_relevance_metrics(
             "included_count": 0,
             "reviewed_count": 0,
             "excluded_count": 0,
+            "is_empty_denominator": True,
         }
 
-    eval_count = len(evaluations)
-    coverage = round(eval_count / total_sources, 4)
+    # Deduplicate evaluations by source_id (or index if anonymous), keeping the latest evaluation for each source
+    deduped: Dict[str, Dict[str, Any]] = {}
+    for idx, e in enumerate(evaluations):
+        sid = e.get("source_id") or f"eval-idx-{idx}"
+        deduped[sid] = e
+
+    eval_count = len(deduped)
+    # Coverage cannot exceed 1.0 (cannot evaluate more unique sources than total eligible sources)
+    effective_evaluated = min(eval_count, total_sources)
+    coverage = round(effective_evaluated / total_sources, 4)
 
     if not eval_count:
         return {
@@ -118,12 +139,14 @@ def calculate_relevance_metrics(
             "included_count": 0,
             "reviewed_count": 0,
             "excluded_count": 0,
+            "is_empty_denominator": False,
         }
 
-    inc = sum(1 for e in evaluations if e.get("decision") == "INCLUDE")
-    rev = sum(1 for e in evaluations if e.get("decision") == "REVIEW")
-    exc = sum(1 for e in evaluations if e.get("decision") == "EXCLUDE")
-    avg_score = round(sum(e.get("relevance_score", 0.0) for e in evaluations) / eval_count, 2)
+    eval_list = list(deduped.values())
+    inc = sum(1 for e in eval_list if e.get("decision") == "INCLUDE")
+    rev = sum(1 for e in eval_list if e.get("decision") == "REVIEW")
+    exc = sum(1 for e in eval_list if e.get("decision") == "EXCLUDE")
+    avg_score = round(sum(e.get("relevance_score", 0.0) for e in eval_list) / eval_count, 2)
 
     return {
         "coverage": coverage,
@@ -136,6 +159,7 @@ def calculate_relevance_metrics(
         "included_count": inc,
         "reviewed_count": rev,
         "excluded_count": exc,
+        "is_empty_denominator": False,
     }
 
 
@@ -148,9 +172,17 @@ def calculate_citation_provenance_metrics(
     """
     Calculates citation ID validity and source-to-passage provenance validity.
 
-    Definitions:
-    - citation_id_validity_rate: citations [N] where 1 <= N <= len(sources) / total citations in report
-    - provenance_validity_rate: valid (passage.source_id == cited_source_id) links / total evaluated links
+    Mathematical Definitions:
+    - Citation ID Validity Rate:
+        Numerator: Inline citation occurrences [N] in report markdown where 1 <= N <= len(sources).
+        Denominator: Total inline citation occurrences [N] in report markdown.
+        Formula: valid_citations_in_report / total_citations_in_report
+        Bounds: [0.0, 1.0] (0% - 100%)
+    - Source-to-Passage Provenance Validity Rate:
+        Numerator: Claim-to-evidence links where passage.source_id matches cited source_id.
+        Denominator: Total evaluated claim-to-evidence passage links.
+        Formula: valid_provenance_links / total_provenance_links
+        Bounds: [0.0, 1.0] (0% - 100%)
     """
     # 1. Citation ID validity in report text
     citations = re.findall(r"\[([0-9]+)\]", report_markdown)
@@ -159,10 +191,12 @@ def calculate_citation_provenance_metrics(
 
     if total_citations > 0:
         valid_citations = sum(1 for c in citations if 1 <= int(c) <= max_src_idx)
-        citation_id_validity_rate = round(valid_citations / total_citations, 4)
+        citation_id_validity_rate = round(min(1.0, max(0.0, valid_citations / total_citations)), 4)
+        is_empty_citations = False
     else:
         valid_citations = 0
         citation_id_validity_rate = 1.0 if not sources else 0.0
+        is_empty_citations = True
 
     # 2. Source-to-passage provenance validity
     passage_source_map = {p["id"]: p.get("source_id") for p in passages}
@@ -181,9 +215,11 @@ def calculate_citation_provenance_metrics(
                     valid_provenance_links += 1
 
     if total_links > 0:
-        provenance_validity_rate = round(valid_provenance_links / total_links, 4)
+        provenance_validity_rate = round(min(1.0, max(0.0, valid_provenance_links / total_links)), 4)
+        is_empty_links = False
     else:
         provenance_validity_rate = 1.0
+        is_empty_links = True
 
     return {
         "total_citations_in_report": total_citations,
@@ -192,6 +228,8 @@ def calculate_citation_provenance_metrics(
         "total_provenance_links": total_links,
         "valid_provenance_links": valid_provenance_links,
         "provenance_validity_rate": provenance_validity_rate,
+        "is_empty_citations": is_empty_citations,
+        "is_empty_links": is_empty_links,
     }
 
 
@@ -201,18 +239,44 @@ def calculate_claim_quality_metrics(
     """
     Calculates claim verification coverage and support/contradiction rates among evaluated claims.
 
-    Definitions:
-    - verification_coverage: audited claims / total extracted claims
-    - support_rate: claims with verdict == 'SUPPORTED' / audited claims
-    - partial_support_rate: claims with verdict == 'PARTIALLY_SUPPORTED' / audited claims
-    - contradiction_rate: claims with verdict == 'CONTRADICTED' / audited claims
-    - insufficient_evidence_rate: claims with verdict == 'INSUFFICIENT_EVIDENCE' / audited claims
-    - invalid_citation_rate: claims with verdict == 'INVALID_CITATION' / audited claims
+    Mathematical Definitions:
+    - Verification Coverage:
+        Numerator: Count of unique claims with completed verification audits.
+        Denominator: Total eligible claims extracted for the research run.
+        Formula: unique_audited_claims / total_claims
+        Bounds: [0.0, 1.0] (0% - 100%)
+    - Support Rate:
+        Numerator: Audited claims with verdict == 'SUPPORTED'.
+        Denominator: Total unique audited claims.
+    - Partial Support Rate:
+        Numerator: Audited claims with verdict == 'PARTIALLY_SUPPORTED'.
+        Denominator: Total unique audited claims.
+    - Contradiction Rate:
+        Numerator: Audited claims with verdict == 'CONTRADICTED'.
+        Denominator: Total unique audited claims.
+    - Insufficient Evidence Rate:
+        Numerator: Audited claims with verdict == 'INSUFFICIENT_EVIDENCE'.
+        Denominator: Total unique audited claims.
+    - Invalid Citation Rate:
+        Numerator: Audited claims with verdict == 'INVALID_CITATION'.
+        Denominator: Total unique audited claims.
     """
-    total_claims = len(claims)
-    audited_count = len(verifications)
+    # Deduplicate claims by id
+    unique_claims = {}
+    for idx, c in enumerate(claims):
+        cid = c.get("id") or f"claim-idx-{idx}"
+        unique_claims[cid] = c
+    total_claims = len(unique_claims)
 
-    if not total_claims:
+    # Deduplicate verifications by claim_id, keeping the latest audit
+    deduped_verifs: Dict[str, Dict[str, Any]] = {}
+    for idx, v in enumerate(verifications):
+        cid = v.get("claim_id") or f"verif-idx-{idx}"
+        deduped_verifs[cid] = v
+
+    audited_count = len(deduped_verifs)
+
+    if not total_claims or total_claims <= 0:
         return {
             "total_claims": 0,
             "audited_claims": 0,
@@ -222,9 +286,11 @@ def calculate_claim_quality_metrics(
             "contradiction_rate": 0.0,
             "insufficient_evidence_rate": 0.0,
             "invalid_citation_rate": 0.0,
+            "is_empty_denominator": True,
         }
 
-    coverage = round(audited_count / total_claims, 4)
+    effective_audited = min(audited_count, total_claims)
+    coverage = round(effective_audited / total_claims, 4)
 
     if not audited_count:
         return {
@@ -236,13 +302,15 @@ def calculate_claim_quality_metrics(
             "contradiction_rate": 0.0,
             "insufficient_evidence_rate": 0.0,
             "invalid_citation_rate": 0.0,
+            "is_empty_denominator": False,
         }
 
-    supp = sum(1 for v in verifications if v.get("verdict") == "SUPPORTED")
-    part = sum(1 for v in verifications if v.get("verdict") == "PARTIALLY_SUPPORTED")
-    contra = sum(1 for v in verifications if v.get("verdict") == "CONTRADICTED")
-    insuff = sum(1 for v in verifications if v.get("verdict") == "INSUFFICIENT_EVIDENCE")
-    inv = sum(1 for v in verifications if v.get("verdict") == "INVALID_CITATION")
+    verif_list = list(deduped_verifs.values())
+    supp = sum(1 for v in verif_list if v.get("verdict") == "SUPPORTED")
+    part = sum(1 for v in verif_list if v.get("verdict") == "PARTIALLY_SUPPORTED")
+    contra = sum(1 for v in verif_list if v.get("verdict") == "CONTRADICTED")
+    insuff = sum(1 for v in verif_list if v.get("verdict") == "INSUFFICIENT_EVIDENCE")
+    inv = sum(1 for v in verif_list if v.get("verdict") == "INVALID_CITATION")
 
     return {
         "total_claims": total_claims,
@@ -253,6 +321,7 @@ def calculate_claim_quality_metrics(
         "contradiction_rate": round(contra / audited_count, 4),
         "insufficient_evidence_rate": round(insuff / audited_count, 4),
         "invalid_citation_rate": round(inv / audited_count, 4),
+        "is_empty_denominator": False,
     }
 
 
@@ -262,13 +331,23 @@ def calculate_publication_classification_metrics(
     """
     Calculates publication-status classification coverage and breakdown.
 
-    Definitions:
-    - classification_coverage: classified sources / total sources
-    - unknown_rate: unknown peer-review status / classified sources
-    - peer_reviewed_rate: (PEER_REVIEWED_JOURNAL + PEER_REVIEWED_CONFERENCE) / classified sources
-    - preprint_rate: PREPRINT / classified sources
+    Mathematical Definitions:
+    - Classification Coverage:
+        Numerator: Count of unique eligible source_ids with completed classifications.
+        Denominator: Total eligible sources retrieved for the research run (total_sources).
+        Formula: unique_classified_sources / total_sources
+        Bounds: [0.0, 1.0] (0% - 100%)
+    - Unknown Status Rate:
+        Numerator: Classified sources with peer_review_status == 'UNKNOWN'.
+        Denominator: Total unique classified sources.
+    - Peer-Reviewed Rate:
+        Numerator: Classified sources with peer_review_status in ('PEER_REVIEWED_JOURNAL', 'PEER_REVIEWED_CONFERENCE').
+        Denominator: Total unique classified sources.
+    - Preprint Rate:
+        Numerator: Classified sources with peer_review_status == 'PREPRINT'.
+        Denominator: Total unique classified sources.
     """
-    if not total_sources:
+    if not total_sources or total_sources <= 0:
         return {
             "coverage": 0.0,
             "unknown_rate": 0.0,
@@ -276,10 +355,18 @@ def calculate_publication_classification_metrics(
             "preprint_rate": 0.0,
             "total_classified": 0,
             "total_sources": 0,
+            "is_empty_denominator": True,
         }
 
-    total_classified = len(classifications)
-    coverage = round(total_classified / total_sources, 4)
+    # Deduplicate classifications by source_id (or index if anonymous), keeping the latest classification
+    deduped: Dict[str, Dict[str, Any]] = {}
+    for idx, c in enumerate(classifications):
+        sid = c.get("source_id") or f"class-idx-{idx}"
+        deduped[sid] = c
+
+    total_classified = len(deduped)
+    effective_classified = min(total_classified, total_sources)
+    coverage = round(effective_classified / total_sources, 4)
 
     if not total_classified:
         return {
@@ -289,15 +376,17 @@ def calculate_publication_classification_metrics(
             "preprint_rate": 0.0,
             "total_classified": 0,
             "total_sources": total_sources,
+            "is_empty_denominator": False,
         }
 
-    unknown_c = sum(1 for c in classifications if c.get("peer_review_status") == "UNKNOWN")
+    class_list = list(deduped.values())
+    unknown_c = sum(1 for c in class_list if c.get("peer_review_status") == "UNKNOWN")
     peer_c = sum(
         1
-        for c in classifications
+        for c in class_list
         if c.get("peer_review_status") in ("PEER_REVIEWED_JOURNAL", "PEER_REVIEWED_CONFERENCE")
     )
-    preprint_c = sum(1 for c in classifications if c.get("peer_review_status") == "PREPRINT")
+    preprint_c = sum(1 for c in class_list if c.get("peer_review_status") == "PREPRINT")
 
     return {
         "coverage": coverage,
@@ -306,6 +395,7 @@ def calculate_publication_classification_metrics(
         "preprint_rate": round(preprint_c / total_classified, 4),
         "total_classified": total_classified,
         "total_sources": total_sources,
+        "is_empty_denominator": False,
     }
 
 

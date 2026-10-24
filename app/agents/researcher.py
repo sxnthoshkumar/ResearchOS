@@ -64,8 +64,11 @@ class ResearchAgent:
         run_id: str,
         plan: ResearchPlan,
         search_providers: Optional[List[str]] = None,
-        max_sources: int = 10,
+        max_sources: int = 8,
         is_demo: bool = False,
+        publication_preference: str = "all",
+        evidence_preference: str = "full_text_preferred",
+        relevance_threshold: float = 50.0,
     ) -> ResearchHarvestResult:
         """Executes targeted searches for each subquestion in the research plan."""
         harvest_log: List[SubquestionHarvest] = []
@@ -89,8 +92,10 @@ class ResearchAgent:
                     query=primary_query,
                     subquestion_id=sq.id,
                     providers=providers,
-                    max_sources_per_query=max(2, max_sources // len(plan.subquestions)),
+                    max_sources_per_query=max(2, max_sources // max(1, len(plan.subquestions))),
                     is_demo=is_demo,
+                    publication_preference=publication_preference,
+                    evidence_preference=evidence_preference,
                 )
                 sq_sources_count = len(sources)
                 total_collected += sq_sources_count
@@ -121,6 +126,10 @@ class ResearchAgent:
         oa_count = sum(1 for s in all_sources if s.get("access_status") == "full_text_open")
         full_text_inspected = sum(1 for s in all_sources if s.get("inspected_full_text") == 1)
 
+        # Configure relevance thresholds
+        self.relevance_evaluator.review_threshold = min(relevance_threshold, 50.0)
+        self.relevance_evaluator.include_threshold = max(relevance_threshold, 65.0)
+
         # Evaluate Relevance & Publication Classification for every retrieved source
         included_c = 0
         reviewed_c = 0
@@ -135,6 +144,11 @@ class ResearchAgent:
                     research_question=plan.research_question,
                     passages=s_passages,
                 )
+                # Apply custom user threshold filter
+                decision = rel_res.decision
+                if rel_res.relevance_score < relevance_threshold:
+                    decision = "EXCLUDE"
+
                 RelevanceRepository.record(
                     source_id=s["id"],
                     run_id=run_id,
@@ -148,16 +162,16 @@ class ResearchAgent:
                     methodology_explanation=rel_res.methodology_explanation,
                     findings_explanation=rel_res.findings_explanation,
                     domain_explanation=rel_res.domain_explanation,
-                    decision=rel_res.decision,
+                    decision=decision,
                     is_metadata_only=rel_res.is_metadata_only,
                     positive_signals=rel_res.positive_signals,
                     missing_information=rel_res.missing_information,
                     excerpts=[e.model_dump() for e in rel_res.excerpts],
                 )
 
-                if rel_res.decision == "INCLUDE":
+                if decision == "INCLUDE":
                     included_c += 1
-                elif rel_res.decision == "REVIEW":
+                elif decision == "REVIEW":
                     reviewed_c += 1
                 else:
                     excluded_c += 1

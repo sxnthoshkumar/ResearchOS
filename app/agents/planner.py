@@ -50,7 +50,7 @@ class PlannerAgent:
             return "Research question exceeds maximum length limit (1000 characters)."
         return None
 
-    async def create_plan(self, question: str) -> ResearchPlan:
+    async def create_plan(self, question: str, domain: str = "Computer Science & AI") -> ResearchPlan:
         """Generates a structured research plan using LLM or structured rules."""
         validation_error = self.validate_question(question)
         if validation_error:
@@ -82,7 +82,7 @@ class PlannerAgent:
             "}"
         )
 
-        user_prompt = f'Research Question: "{question.strip()}"'
+        user_prompt = f'Academic Domain: {domain}\nResearch Question: "{question.strip()}"'
 
         messages = [
             LLMMessage(role="system", content=system_prompt),

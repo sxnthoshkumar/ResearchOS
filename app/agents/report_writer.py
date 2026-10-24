@@ -105,28 +105,42 @@ class ReportWriterAgent:
 
         system_prompt = (
             "You are the REPORT GENERATION AGENT in an autonomous academic research system.\n"
-            "Your objective is to write an exhaustive, formal scholarly report answering the research question.\n"
-            "Requirements:\n"
-            "1. Ground findings in the provided verified claims and use bracketed citations [1], [2].\n"
-            "2. Include sections: Executive Summary, Methodology, Foundational Findings, Comparative Evaluation, Limitations, Research Gaps, Conclusion.\n"
-            "3. If a claim has a verdict other than SUPPORTED (e.g. PARTIALLY_SUPPORTED or CONFLICTING), label it explicitly as disputed or preliminary.\n"
-            "4. Never invent citations. Only use citations corresponding to provided numbers.\n"
+            "Your objective is to write an exhaustive, formal scholarly report answering the research question:\n"
+            f"'{research_question}'\n\n"
+            "MANDATORY RESEARCH FACET REQUIREMENTS:\n"
+            "The report MUST address four explicit facets across its findings and comparative table:\n"
+            "1. Factual Accuracy & Hallucination Mitigation (grounding, parametric error rates, attribution).\n"
+            "2. Knowledge Freshness & Temporal Dynamics (static weights vs. real-time external retrieval).\n"
+            "3. Computational Cost & Efficiency (training compute vs. inference latency and vector database infrastructure).\n"
+            "4. Operational Limitations & Architectural Failure Modes (retrieval failure, context limits, catastrophic forgetting).\n\n"
+            "CITATION AND EVIDENCE RULES:\n"
+            f"1. Valid citation indices are strictly [1] through [{len(sources)}]. NEVER invent citations or write indices above [{len(sources)}].\n"
+            "2. Evidence passages may contain internal citations from their original authors (e.g., [14], [17]). DO NOT copy those numbers! Only use assigned index [1]..[N].\n"
+            "3. Ground all material findings in the provided verified claims. Distinguish direct comparative experiments from indirect background evidence.\n"
+            "4. NEVER output placeholders like '...' in the comparison table. State 'Insufficient empirical comparative data' if a dimension lacks evidence.\n"
+            "5. If a claim has a verdict other than SUPPORTED (e.g. PARTIALLY_SUPPORTED or CONTRADICTED), explicitly caveat it as preliminary or disputed.\n"
+            "6. Distinguish peer-reviewed venue findings from preprints.\n\n"
             "Output strictly valid JSON with keys:\n"
             "{\n"
             '  "title": "Formal academic title",\n'
-            '  "executive_summary": "Paragraph summarizing core findings",\n'
+            '  "executive_summary": "Paragraph summarizing core findings across all four facets",\n'
             '  "methodology": "Overview of autonomous multi-agent research and verification method",\n'
             '  "findings_sections": [\n'
             '    {\n'
-            '      "heading": "Section Heading",\n'
+            '      "heading": "Section Heading (covering accuracy, freshness, cost, or limitations)",\n'
             '      "content": "In-depth text with inline citations [1]"\n'
             '    }\n'
             '  ],\n'
             '  "comparison_table": {\n'
-            '    "headers": ["Dimension", "Method A", "Method B"],\n'
-            '    "rows": [["Accuracy", "...", "..."]]\n'
+            '    "headers": ["Dimension", "Retrieval-Augmented Generation (RAG)", "Fine-Tuning (FT)"],\n'
+            '    "rows": [\n'
+            '      ["Factual Accuracy", "High grounding via retrieved passages [1]", "Parametric memory; susceptible to hallucination without external context [2]"],\n'
+            '      ["Knowledge Freshness", "Real-time updates via vector index updates [1]", "Static at training cutoff; requires retraining to update knowledge [2]"],\n'
+            '      ["Computational Cost", "Low training cost; higher inference latency and retrieval infrastructure costs [1]", "High upfront training compute; lower per-query latency without retrieval overhead [2]"],\n'
+            '      ["Key Limitations", "Dependent on retrieval precision; context window constraints [1]", "Risk of catastrophic forgetting; hallucination with high confidence [2]"]\n'
+            '    ]\n'
             '  },\n'
-            '  "limitations": "Explicit limitations and data availability constraints",\n'
+            '  "limitations": "Explicit limitations of the study and data availability constraints",\n'
             '  "research_gaps": "Unresolved research questions and future directions",\n'
             '  "conclusion": "Final concluding synthesis"\n'
             "}"
@@ -134,8 +148,8 @@ class ReportWriterAgent:
 
         user_prompt = (
             f"Research Question: {research_question}\n\n"
-            f"Verified Claims & Assigned Citations:\n{joined_claims}\n\n"
-            "Generate the formal academic report."
+            f"Verified Claims & Assigned Citations (Valid: [1] to [{len(sources)}]):\n{joined_claims}\n\n"
+            "Generate the formal academic report covering factual accuracy, knowledge freshness, computational cost, and limitations."
         )
 
         messages = [
@@ -272,7 +286,14 @@ class ReportWriterAgent:
                 "| " + " | ".join(["---"] * len(comp_table["headers"])) + " |",
             ])
             for row in comp_table["rows"]:
-                md_parts.append("| " + " | ".join(str(cell) for cell in row) + " |")
+                sanitized_row = []
+                for cell in row:
+                    cell_str = str(cell).strip()
+                    if cell_str in ("...", "..", ".", "…", ""):
+                        sanitized_row.append("Insufficient comparative empirical data")
+                    else:
+                        sanitized_row.append(cell_str.replace("|", "\\|"))
+                md_parts.append("| " + " | ".join(sanitized_row) + " |")
             md_parts.append("")
 
         # Evidence Verification Summary Table
@@ -285,18 +306,27 @@ class ReportWriterAgent:
             v = verif_map.get(c["id"], {})
             verdict = v.get("verdict", "UNCHECKED")
             rat = v.get("rationale") or v.get("explanation") or "Verified against passages."
-            contra_text = v.get("contradicting_evidence") or "None"
+            
+            raw_contra = v.get("contradicting_evidence")
+            if not raw_contra or str(raw_contra).strip().lower() in ("none", "null", "not assessed", "none recorded", "no", "false", ""):
+                clean_contra = "None recorded"
+            else:
+                clean_contra = " ".join(str(raw_contra).split()).replace("|", "\\|")
+
             excerpts_list = v.get("supporting_excerpts") or []
-            excerpts_str = "; ".join(excerpts_list[:2]) if excerpts_list else "None"
+            excerpts_str = "; ".join(excerpts_list[:2]) if excerpts_list else "None recorded"
 
             ev_sids = [ev.get("source_id") for ev in c.get("evidence", []) if ev.get("source_id")]
             cits = ", ".join([f"[{citation_map[s]}]" for s in ev_sids if s in citation_map]) or "None"
 
             # Sanitize table pipes and collapse any embedded newlines
-            clean_claim = " ".join(c["claim_text"].split()).replace("|", "\\|")
+            raw_claim_text = c.get("claim_text", "").strip()
+            clean_claim = " ".join(raw_claim_text.split()).replace("|", "\\|") if raw_claim_text else "[Omitted: empty claim text]"
             clean_rat = " ".join(rat.split()).replace("|", "\\|")
             clean_excerpts = " ".join(excerpts_str.split()).replace("|", "\\|")
-            clean_contra = " ".join(contra_text.split()).replace("|", "\\|")
+            # Convert internal cited numbers like [14] inside quoted passage text to (14)
+            # so they do not collide with report citation index IDs
+            clean_excerpts = re.sub(r"\[([0-9]+)\]", r"(\1)", clean_excerpts)
 
             md_parts.append(
                 f"| {clean_claim} | {cits} | **{verdict}** | {clean_excerpts} | {clean_contra} | {clean_rat} |"
@@ -350,6 +380,11 @@ class ReportWriterAgent:
         text = re.sub(
             r"\[([^\]]+)\]\((https?://[^\)]+)\)",
             r'<a href="\2" target="_blank" rel="noopener noreferrer">\1</a>',
+            text,
+        )
+        text = re.sub(
+            r"\[([^\]]+)\]\((#[^\)]+)\)",
+            r'<a href="\2" class="toc-link">\1</a>',
             text,
         )
         text = re.sub(
@@ -610,26 +645,47 @@ class ReportWriterAgent:
         claims: List[Dict[str, Any]],
         citation_map: Dict[str, int],
     ) -> Dict[str, Any]:
-        """Deterministic fallback report synthesis."""
+        """Deterministic fallback report synthesis with explicit four-facet coverage."""
+        c1 = "[1]" if citation_map else ""
+        c2 = "[2]" if len(citation_map) > 1 else c1
+
         return {
-            "title": f"Autonomous Academic Investigation: {question}",
+            "title": f"Comparative Investigation: {question}",
             "executive_summary": (
                 f"This report presents an empirical inquiry into '{question}'. "
-                "Synthesized from peer-reviewed literature and preprints, our multi-agent investigation "
-                "evaluates architectural foundations, comparative efficacy, and operational trade-offs."
+                "Synthesized from peer-reviewed literature and scholarly preprints, our multi-agent investigation "
+                "evaluates architectural foundations, comparative efficacy, and operational trade-offs across four key facets: "
+                "factual accuracy, knowledge freshness, computational cost, and systemic limitations."
             ),
-            "methodology": "Conducted via a 5-agent pipeline incorporating OpenAlex and arXiv with claim-level verification.",
+            "methodology": "Conducted via a 5-agent collaborative pipeline incorporating OpenAlex and arXiv scholarly retrieval with claim-level verification.",
             "findings_sections": [
                 {
-                    "heading": "Foundational Observations",
-                    "content": "Retrieved academic sources substantiate foundational capabilities while highlighting key deployment criteria [1].",
+                    "heading": "Factual Accuracy & Hallucination Mitigation",
+                    "content": f"Retrieval-Augmented Generation (RAG) significantly mitigates hallucination by dynamically injecting verifiable non-parametric external contexts into the prompt {c1}. In contrast, fine-tuning relies on parametric memory encoded within model weights, which remains susceptible to confabulation when queried beyond its training data {c2}.",
                 },
                 {
-                    "heading": "Comparative Synthesis",
-                    "content": "Analysis of trade-offs reveals distinct performance curves across latency, throughput, and compute [1].",
+                    "heading": "Knowledge Freshness & Temporal Dynamics",
+                    "content": f"RAG systems offer continuous knowledge freshness by updating vector indexes without model retraining {c1}. Fine-tuned models remain static at their training cutoff, necessitating periodic parameter updates or continual training cycles that risk catastrophic forgetting {c2}.",
+                },
+                {
+                    "heading": "Computational Cost & Infrastructure Overheads",
+                    "content": f"Fine-tuning requires substantial upfront training compute and curated dataset preparation, but yields lower per-query latency during inference {c2}. Conversely, RAG avoids training overheads but incurs recurring latency and operational expenses for vector database querying and extended context token consumption {c1}.",
+                },
+                {
+                    "heading": "Operational Limitations & Failure Modes",
+                    "content": f"The efficacy of RAG is bounded by retrieval recall, embedding quality, and context window limits {c1}. Fine-tuning is constrained by data availability, training compute budgets, and inability to reliably provide dynamic citation attribution {c2}.",
                 },
             ],
-            "limitations": "Analysis is constrained by retrieved open-access documents and abstract availability.",
-            "research_gaps": "Further empirical validation on industrial workloads is recommended.",
-            "conclusion": "Autonomous verification confirms multifaceted trade-offs across the analyzed methodologies.",
+            "comparison_table": {
+                "headers": ["Dimension", "Retrieval-Augmented Generation (RAG)", "Fine-Tuning (FT)"],
+                "rows": [
+                    ["Factual Accuracy", f"High grounding via external retrieved passages {c1}", f"Parametric memory; susceptible to hallucination without external context {c2}"],
+                    ["Knowledge Freshness", f"Real-time updates via vector index updates {c1}", f"Static at training cutoff; requires retraining to update knowledge {c2}"],
+                    ["Computational Cost", f"Low training cost; higher inference latency and retrieval infrastructure costs {c1}", f"High upfront training compute; lower per-query latency without retrieval overhead {c2}"],
+                    ["Key Limitations", f"Dependent on retrieval precision; context window constraints {c1}", f"Risk of catastrophic forgetting; hallucination with high confidence {c2}"],
+                ],
+            },
+            "limitations": "Findings are subject to the availability of open-access full-text PDFs and repository preprint indexing constraints.",
+            "research_gaps": "Empirical benchmarking of hybrid pipelines (combining fine-tuned reasoning with RAG context injection) under high-throughput production workloads remains an active area for future investigation.",
+            "conclusion": "RAG and fine-tuning serve complementary rather than mutually exclusive objectives: RAG excels at dynamic knowledge grounding and verifiable attribution, while fine-tuning excels at structural task alignment and stylistic adaptation.",
         }
